@@ -306,4 +306,3 @@ AnimateGuiOut() {
     }
     Gui, Hide
 }
-
