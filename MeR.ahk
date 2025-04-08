@@ -16,7 +16,7 @@ Process, Priority, %PID%, High
 GuiVisible := true
 
 ; Set your password here
-Password := "ASA"  ; Change this to your desired password
+Password := "AAA"  ; Change this to your desired password
 
 ; Password Prompt
 InputBox, UserPassword, Enter Password, Please enter the password to proceed:
