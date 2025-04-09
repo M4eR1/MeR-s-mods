@@ -16,51 +16,52 @@ Process, Priority, %PID%, High
 GuiVisible := true
 
 ; Set your password here
-Password := "AAA"  ; Change this to your desired password
+Password := "ADA"  ; Change this to your desired password
 
 ; Password Prompt
-InputBox, UserPassword, أدخل كلمة المرور, الرجاء إدخال كلمة المرور للمتابعة:
+InputBox, UserPassword, MeR's mod menu, Please enter the password to proceed:
 if (UserPassword != Password) {
-    MsgBox, كلمة المرور غير صحيحة!
+    MsgBox, Incorrect password!
     ExitApp
 }
 
 ; GUI Setup
 Gui, +ToolWindow -Caption +E0x08000000 +LastFound +AlwaysOnTop
+WinSetTitle, A, , MeR's mod menu
 Gui, Color, 20232A
 Gui, Font, s10 cFFFFFF, Segoe UI Semibold
 Gui, Margin, 10, 10
 
-Gui, Add, Text, x10 y5 w180 h30 Center BackgroundTrans cFFA500 gGuiMove, قائمة مود MeR
+Gui, Add, Text, x10 y5 w180 h30 Center BackgroundTrans cFFA500 gGuiMove, MeR's mod menu
 
-Gui, Add, Text, y+10 w180 Center c00CED1, الإعدادات المسبقة
-Gui, Add, Button, w180 h28 gFullHack, هاك كامل
-Gui, Add, Button, w180 h28 gProPlayer, لاعب محترف
-Gui, Add, Button, w180 h28 gLegit, شرعي
+Gui, Add, Text, y+10 w180 Center c00CED1, Presets
+Gui, Add, Button, w180 h28 gFullHack, Full Hack
+Gui, Add, Button, w180 h28 gProPlayer, Pro Player
+Gui, Add, Button, w180 h28 gLegit, Legit
 
-Gui, Add, Text, y+10 w180 Center c00CED1, الأنماط
-Gui, Add, CheckBox, vRifleCheckbox gRifleToggle, بندقية
-Gui, Add, CheckBox, vSniperCheckbox gSniperToggle, قناص
-Gui, Add, CheckBox, vEnablePredictionCheckbox, تفعيل التنبؤ
+Gui, Add, Text, y+10 w180 Center c00CED1, Modes
+Gui, Add, CheckBox, vRifleCheckbox gRifleToggle, Rifle
+Gui, Add, CheckBox, vSniperCheckbox gSniperToggle, Sniper
+Gui, Add, CheckBox, vEnablePredictionCheckbox, Enable Prediction
 
-Gui, Add, Text, y+10 w180 Center c00CED1, موقع الهدف
-Gui, Add, Button, x10 w125 h26 gHeadshotsButton, الرأس
-Gui, Add, Button, x+10 w125 h26 gChestButton, الصدر
+Gui, Add, Text, y+10 w180 Center c00CED1, Target Location
+Gui, Add, Button, x10 w125 h26 gHeadshotsButton, Head
+Gui, Add, Button, x+10 w125 h26 gChestButton, Chest
 
-Gui, Add, Text, y+10 w180 Center c00CED1, قوة التصويب
-Gui, Add, Radio, vStrengthOption1 gUpdateStrength, مساعد التصويب
-Gui, Add, Radio, vStrengthOption2 gUpdateStrength, تصويب قوي
-Gui, Add, Radio, vStrengthOption3 gUpdateStrength, إيمبوت
+Gui, Add, Text, y+10 w180 Center c00CED1, Aim Strength
+Gui, Add, Radio, vStrengthOption1 gUpdateStrength, Aim Assist
+Gui, Add, Radio, vStrengthOption2 gUpdateStrength, Strong Aim
+Gui, Add, Radio, vStrengthOption3 gUpdateStrength, Aimbot
 
-Gui, Add, Text, y+10 w180 Center c00CED1, أخرى
-Gui, Add, CheckBox, vRedBoxToggle, عرض مربع أحمر
-Gui, Add, CheckBox, vRapidFireToggle, إطلاق سريع
-Gui, Add, CheckBox, vAutoMarkToggle, تعليم تلقائي (MB1+MB2 → P)
-Gui, Add, CheckBox, vYYToggle, YY (اضغط مطولاً 1)
+Gui, Add, Text, y+10 w180 Center c00CED1, Other
+Gui, Add, CheckBox, vRedBoxToggle, Show Red Square Overlay
+Gui, Add, CheckBox, vRapidFireToggle, Rapid Fire
+Gui, Add, CheckBox, vAutoMarkToggle, Auto Mark (MB1+MB2 → P)
+Gui, Add, CheckBox, vYYToggle, YY (Hold 1)
 
-Gui, Add, Button, x10 y+20 w50 h28 gClose, إغلاق
+Gui, Add, Button, x10 y+20 w50 h28 gClose, Close
 
-Gui, Show, AutoSize, قائمة مود MeR
+Gui, Show, AutoSize, MeR's mod menu
 AnimateGuiIn()
 
 ; Vars
@@ -77,7 +78,6 @@ lastTime := 0
 strength := 0.11
 predictionMultiplier := 2.5
 targetOverlayID := 0
-
 lastAutoMarkTime := 0
 
 Loop {
@@ -197,7 +197,7 @@ GuiMove:
 ~LButton::
     MouseGetPos,,, WinID
     WinGetTitle, title, ahk_id %WinID%
-    if (InStr(title, "MeR") || InStr(title, "قائمة"))
+    if (InStr(title, "MeR's mod menu"))
         PostMessage, 0xA1, 2,,, A
 Return
 
