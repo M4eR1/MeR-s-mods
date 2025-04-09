@@ -16,7 +16,7 @@ Process, Priority, %PID%, High
 GuiVisible := true
 
 ; Set your password here
-Password := "ADA"  ; Change this to your desired password
+Password := "ABA"  ; Change this to your desired password
 
 ; Password Prompt
 InputBox, UserPassword, MeR's mod menu, Please enter the password to proceed:
