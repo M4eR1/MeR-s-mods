@@ -1,4 +1,6 @@
+; AutoHotkey Script - Fixed Version with Draggable Square and V2.0 Label
 #NoEnv
+#NoTrayIcon
 #SingleInstance, Force
 #Persistent
 #InstallKeybdHook
@@ -14,57 +16,67 @@ PID := DllCall("GetCurrentProcessId")
 Process, Priority, %PID%, High
 
 GuiVisible := true
-
-; Set your password here
-Password := "ABB"  ; Change this to your desired password
-
-; Password Prompt
-InputBox, UserPassword, MeR's mod menu, Please enter the password to proceed:
+Password := "AAA"
+InputBox, UserPassword, Enter Password, Please enter the password to proceed:
 if (UserPassword != Password) {
     MsgBox, Incorrect password!
     ExitApp
 }
 
-; GUI Setup
 Gui, +ToolWindow -Caption +E0x08000000 +LastFound +AlwaysOnTop
-WinSetTitle, A, , MeR's mod menu
 Gui, Color, 20232A
 Gui, Font, s10 cFFFFFF, Segoe UI Semibold
 Gui, Margin, 10, 10
 
-Gui, Add, Text, x10 y5 w180 h30 Center BackgroundTrans cFFA500 gGuiMove, MeR's mod menu
+; Drag Handle
+Gui, Add, Text, x160 y0 w20 h20 BackgroundTrans vDragHandle gGuiMove, ■
 
-Gui, Add, Text, y+10 w180 Center c00CED1, Presets
-Gui, Add, Button, w180 h28 gFullHack, Full Hack
-Gui, Add, Button, w180 h28 gProPlayer, Pro Player
-Gui, Add, Button, w180 h28 gLegit, Legit
+; Title
+Gui, Add, Text, x10 y5 w180 h30 Center BackgroundTrans cFFA500, MeR's Mod menu
 
+; Modes
 Gui, Add, Text, y+10 w180 Center c00CED1, Modes
 Gui, Add, CheckBox, vRifleCheckbox gRifleToggle, Rifle
 Gui, Add, CheckBox, vSniperCheckbox gSniperToggle, Sniper
 Gui, Add, CheckBox, vEnablePredictionCheckbox, Enable Prediction
 
+; Target Location
 Gui, Add, Text, y+10 w180 Center c00CED1, Target Location
 Gui, Add, Button, x10 w125 h26 gHeadshotsButton, Head
 Gui, Add, Button, x+10 w125 h26 gChestButton, Chest
 
+; Aim Strength
 Gui, Add, Text, y+10 w180 Center c00CED1, Aim Strength
 Gui, Add, Radio, vStrengthOption1 gUpdateStrength, Aim Assist
 Gui, Add, Radio, vStrengthOption2 gUpdateStrength, Strong Aim
 Gui, Add, Radio, vStrengthOption3 gUpdateStrength, Aimbot
+Gui, Add, Radio, vStrengthOption4 gUpdateStrength, Smooth Aimbot
 
+; Other
 Gui, Add, Text, y+10 w180 Center c00CED1, Other
-Gui, Add, CheckBox, vRedBoxToggle, Show Red Square Overlay
-Gui, Add, CheckBox, vRapidFireToggle, Rapid Fire
+Gui, Add, CheckBox, vRapidFireToggle, Rapid Fire (⚠️ Might Lag Device)
 Gui, Add, CheckBox, vAutoMarkToggle, Auto Mark (MB1+MB2 → P)
 Gui, Add, CheckBox, vYYToggle, YY (Hold 1)
 
+; Sniper
+Gui, Add, Text, y+10 w180 Center c00CED1, Sniper
+Gui, Add, CheckBox, vSniperFocusToggle, Sniper Focus
+Gui, Add, CheckBox, vSilenceToggle, Silence
+
+; Silence Key
+Gui, Add, Text, y+5 w180 Center c00CED1, Silence Key
+Gui, Add, DropDownList, vSilenceKeyChoice gSilenceKeyChanged, E||G
+
+; Version Label
+Gui, Add, Text, x140 y+20 w120 h30 Right BackgroundTrans c808080, V2.0
+
+; Close Button
 Gui, Add, Button, x10 y+20 w50 h28 gClose, Close
 
-Gui, Show, AutoSize, MeR's mod menu
+Gui, Show, AutoSize, MeR's Mod menu
+
 AnimateGuiIn()
 
-; Vars
 EMCol := 0xEEFF00
 ColVn := 30
 ZeroX := A_ScreenWidth / 2
@@ -77,17 +89,21 @@ prevY := 0
 lastTime := 0
 strength := 0.11
 predictionMultiplier := 2.5
-targetOverlayID := 0
 lastAutoMarkTime := 0
+silenceActive := false
+SilenceFired := false
+silenceKey := "e" ; default
 
 Loop {
     GuiControlGet, EnablePrediction,, EnablePredictionCheckbox
     GuiControlGet, RifleEnabled,, RifleCheckbox
     GuiControlGet, SniperEnabled,, SniperCheckbox
-    GuiControlGet, RedBoxEnabled,, RedBoxToggle
     GuiControlGet, RapidFireEnabled,, RapidFireToggle
     GuiControlGet, AutoMarkActive,, AutoMarkToggle
     GuiControlGet, YYActive,, YYToggle
+    GuiControlGet, SniperFocusActive,, SniperFocusToggle
+    GuiControlGet, SilenceEnabled,, SilenceToggle
+    GuiControlGet, silenceKey,, SilenceKeyChoice
 
     if (RapidFireEnabled && GetKeyState("LButton", "P"))
         Click
@@ -107,12 +123,29 @@ Loop {
         Sleep, 50
     }
 
-    if (RifleEnabled && GetKeyState("LButton", "P") && GetKeyState("RButton", "P"))
-        ModeActive := true
-    else if (SniperEnabled && GetKeyState("RButton", "P"))
-        ModeActive := true
+    if (SniperFocusActive && GetKeyState("RButton", "P"))
+        Send, {Shift Down}
     else
+        Send, {Shift Up}
+
+    if (SilenceEnabled) {
+        if (GetKeyState("LButton", "P") && !SilenceFired) {
+            SilenceFired := true
+            Send, {%silenceKey% down}
+            Sleep, 10
+            Send, 1
+            Sleep, 10
+            Send, {%silenceKey% up}
+        } else if (!GetKeyState("LButton", "P")) {
+            SilenceFired := false
+        }
+    }
+
+    if ((RifleEnabled && GetKeyState("LButton", "P") && GetKeyState("RButton", "P")) || (SniperEnabled && GetKeyState("RButton", "P"))) {
+        ModeActive := true
+    } else {
         ModeActive := false
+    }
 
     if (ModeActive) {
         targetFound := False
@@ -153,55 +186,23 @@ Loop {
                 PredictedY := targetY
             }
 
-            if (RedBoxEnabled)
-                ShowRedBox(PredictedX, PredictedY)
-            else
-                HideRedBox()
-
             AimX := PredictedX - ZeroX
             AimY := PredictedY - ZeroY
             DllCall("mouse_event", uint, 1, int, Round(AimX * strength), int, Round(AimY * strength), uint, 0, int, 0)
-        } else {
-            HideRedBox()
         }
-    } else {
-        HideRedBox()
     }
 
     Sleep, 10
 }
 
-ShowRedBox(x, y) {
-    global targetOverlayID
-    if (targetOverlayID)
-        WinSet, Region,, ahk_id %targetOverlayID%
-    else {
-        Gui, RedBox: +ToolWindow -Caption +AlwaysOnTop +LastFound +E0x80000
-        Gui, RedBox: Color, FF0000
-        Gui, RedBox: Show, x%x% y%y% w20 h20 NoActivate, TargetBox
-        WinGet, targetOverlayID, ID, TargetBox
-    }
-    WinMove, ahk_id %targetOverlayID%, , x - 10, y - 10, 20, 20
-    WinSet, Transparent, 180, ahk_id %targetOverlayID%
-}
-
-HideRedBox() {
-    global targetOverlayID
-    if (targetOverlayID) {
-        Gui, RedBox:Hide
-    }
-}
-
-; GUI Move
 GuiMove:
 ~LButton::
-    MouseGetPos,,, WinID
-    WinGetTitle, title, ahk_id %WinID%
-    if (InStr(title, "MeR's mod menu"))
+    MouseGetPos, mx, my, WinID, Control
+    if (Control = "Static1" || Control = "DragHandle") {
         PostMessage, 0xA1, 2,,, A
+    }
 Return
 
-; Right Ctrl to toggle the menu
 ~RControl::
     if (GuiVisible) {
         AnimateGuiOut()
@@ -213,7 +214,6 @@ Return
     }
 Return
 
-; Buttons
 Close:
 GuiClose:
     ExitApp
@@ -247,6 +247,7 @@ UpdateStrength:
     GuiControlGet, s1,, StrengthOption1
     GuiControlGet, s2,, StrengthOption2
     GuiControlGet, s3,, StrengthOption3
+    GuiControlGet, s4,, StrengthOption4
     if (s1) {
         strength := 0.11
         SoundBeep, 1000
@@ -256,40 +257,16 @@ UpdateStrength:
     } else if (s3) {
         strength := 0.35
         SoundBeep, 1400
+    } else if (s4) {
+        strength := 0.50
+        SoundBeep, 1600
     }
 Return
 
-FullHack:
-    GuiControl,, EnablePredictionCheckbox, 1
-    GuiControl,, RifleCheckbox, 0
-    GuiControl,, SniperCheckbox, 1
-    GuiControl,, StrengthOption3, 1
-    Gosub, UpdateStrength
-    ZeroY := A_ScreenHeight / 2.18
-    SoundBeep, 1300
+SilenceKeyChanged:
+    GuiControlGet, silenceKey,, SilenceKeyChoice
 Return
 
-ProPlayer:
-    GuiControl,, EnablePredictionCheckbox, 1
-    GuiControl,, RifleCheckbox, 1
-    GuiControl,, SniperCheckbox, 0
-    GuiControl,, StrengthOption2, 1
-    Gosub, UpdateStrength
-    ZeroY := A_ScreenHeight / 2.18
-    SoundBeep, 1100
-Return
-
-Legit:
-    GuiControl,, EnablePredictionCheckbox, 1
-    GuiControl,, RifleCheckbox, 1
-    GuiControl,, SniperCheckbox, 0
-    GuiControl,, StrengthOption1, 1
-    Gosub, UpdateStrength
-    ZeroY := A_ScreenHeight / 2.22
-    SoundBeep, 900
-Return
-
-; Animations
 AnimateGuiIn() {
     Loop, 10 {
         alpha := A_Index * 22
