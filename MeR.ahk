@@ -1,4 +1,4 @@
-; AutoHotkey Script - Fixed Version with Draggable Square and V2.0 Label
+; AutoHotkey Script - V2.1 with Silence Toggle via \ Key and Updated Features
 #NoEnv
 #NoTrayIcon
 #SingleInstance, Force
@@ -58,9 +58,8 @@ Gui, Add, CheckBox, vRapidFireToggle, Rapid Fire (⚠️ Might Lag Device)
 Gui, Add, CheckBox, vAutoMarkToggle, Auto Mark (MB1+MB2 → P)
 Gui, Add, CheckBox, vYYToggle, YY (Hold 1)
 
-; Sniper
-Gui, Add, Text, y+10 w180 Center c00CED1, Sniper
-Gui, Add, CheckBox, vSniperFocusToggle, Sniper Focus
+; Silence
+Gui, Add, Text, y+10 w180 Center c00CED1, Silence
 Gui, Add, CheckBox, vSilenceToggle, Silence
 
 ; Silence Key
@@ -68,15 +67,15 @@ Gui, Add, Text, y+5 w180 Center c00CED1, Silence Key
 Gui, Add, DropDownList, vSilenceKeyChoice gSilenceKeyChanged, E||G
 
 ; Version Label
-Gui, Add, Text, x140 y+20 w120 h30 Right BackgroundTrans c808080, V2.0
+Gui, Add, Text, x140 y+20 w120 h30 Right BackgroundTrans c808080, V2.1
 
 ; Close Button
 Gui, Add, Button, x10 y+20 w50 h28 gClose, Close
 
 Gui, Show, AutoSize, MeR's Mod menu
-
 AnimateGuiIn()
 
+; Variables
 EMCol := 0xEEFF00
 ColVn := 30
 ZeroX := A_ScreenWidth / 2
@@ -101,7 +100,6 @@ Loop {
     GuiControlGet, RapidFireEnabled,, RapidFireToggle
     GuiControlGet, AutoMarkActive,, AutoMarkToggle
     GuiControlGet, YYActive,, YYToggle
-    GuiControlGet, SniperFocusActive,, SniperFocusToggle
     GuiControlGet, SilenceEnabled,, SilenceToggle
     GuiControlGet, silenceKey,, SilenceKeyChoice
 
@@ -122,11 +120,6 @@ Loop {
         Send, 1
         Sleep, 50
     }
-
-    if (SniperFocusActive && GetKeyState("RButton", "P"))
-        Send, {Shift Down}
-    else
-        Send, {Shift Up}
 
     if (SilenceEnabled) {
         if (GetKeyState("LButton", "P") && !SilenceFired) {
@@ -195,6 +188,19 @@ Loop {
     Sleep, 10
 }
 
+; Hotkeys
+\::  ; Toggle Silence
+GuiControlGet, SilenceEnabled,, SilenceToggle
+if (SilenceEnabled) {
+    GuiControl,, SilenceToggle, 0
+    SoundBeep, 700  ; OFF sound
+} else {
+    GuiControl,, SilenceToggle, 1
+    SoundBeep, 1200  ; ON sound
+}
+Return
+
+; GUI Move
 GuiMove:
 ~LButton::
     MouseGetPos, mx, my, WinID, Control
@@ -203,6 +209,7 @@ GuiMove:
     }
 Return
 
+; Show/Hide GUI
 ~RControl::
     if (GuiVisible) {
         AnimateGuiOut()
