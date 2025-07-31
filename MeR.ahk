@@ -16,7 +16,7 @@ PID := DllCall("GetCurrentProcessId")
 Process, Priority, %PID%, High
 
 GuiVisible := true
-Password := "AAA"
+Password := "mer"
 InputBox, UserPassword, Enter Password, Please enter the password to proceed:
 if (UserPassword != Password) {
     MsgBox, Incorrect password!
