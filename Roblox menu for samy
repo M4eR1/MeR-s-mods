@@ -1,0 +1,50 @@
+#NoEnv
+#SingleInstance, Force
+#Persistent
+#NoTrayIcon
+SetBatchLines, -1
+
+; --- Initial state ---
+toggle := false
+
+; --- Create status display GUI ---
+Gui, +AlwaysOnTop -Caption +ToolWindow +E0x20  ; Transparent click-through
+Gui, Color, 000000
+Gui, Font, s14 Bold, Segoe UI
+
+; Create text control for status
+Gui, Add, Text, vStatusText cRed, Inactive
+
+; Create small "X" button to close
+Gui, Add, Button, gCloseScript x+20 yp-10 w30 h30, X
+GuiControl, Move, StatusText, x10 y10
+
+; Show GUI lower on the screen
+Gui, Show, x10 y100 NoActivate, Status Display
+
+; --- Main Toggle Key ---
+F1::
+    toggle := !toggle
+    if (toggle) {
+        GuiControl, , StatusText, Active
+        GuiControl, +cGreen, StatusText
+        SetTimer, HoldKeys, 10
+    } else {
+        GuiControl, , StatusText, Inactive
+        GuiControl, +cRed, StatusText
+        SetTimer, HoldKeys, Off
+        Send, {w up}{Space up}
+    }
+return
+
+; --- Loop to hold keys when active ---
+HoldKeys:
+    if (toggle) {
+        Send, {w down}{Space down}
+    }
+return
+
+; --- Close button handler ---
+CloseScript:
+    ExitApp
+return
