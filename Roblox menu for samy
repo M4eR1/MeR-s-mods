@@ -4,47 +4,142 @@
 #NoTrayIcon
 SetBatchLines, -1
 
-; --- Initial state ---
+; --- Initial States ---
 toggle := false
+antiAFK := false
+clickX := ""
+clickY := ""
 
-; --- Create status display GUI ---
-Gui, +AlwaysOnTop -Caption +ToolWindow +E0x20  ; Transparent click-through
+; --- Create GUI ---
+Gui, +AlwaysOnTop -Caption +ToolWindow +E0x20
 Gui, Color, 000000
 Gui, Font, s14 Bold, Segoe UI
 
-; Create text control for status
+; Main Status
 Gui, Add, Text, vStatusText cRed, Inactive
-
-; Create small "X" button to close
-Gui, Add, Button, gCloseScript x+20 yp-10 w30 h30, X
 GuiControl, Move, StatusText, x10 y10
 
-; Show GUI lower on the screen
+; Anti-AFK / Auto Rebirth Status
+Gui, Font, s12, Segoe UI
+Gui, Add, Text, vAntiAFKText cGray x10 y+10, Anti-AFK / Auto Rebirth: OFF (F2)
+
+; Add "F3 toggles all" info
+Gui, Font, s10, Segoe UI
+Gui, Add, Text, cWhite x10 y+10, Press F3 to toggle all options
+
+; --- "Made By MeR" colorful text (top-right) ---
+Gui, Font, s12 Bold, Segoe UI
+xpos := 250
+ypos := 10
+
+text := "Made By MeR"
+colors := "FF0000,FF7F00,FFFF00,00FF00,00FFFF,0000FF,8A2BE2,FF1493,00FF7F,FFD700,FF4500"
+
+StringSplit, colorArr, colors, `,
+Loop, Parse, text
+{
+    color := colorArr%A_Index%
+    if (color = "")
+        color := "FFFFFF"  ; fallback color (white)
+    Gui, Add, Text, c%color% x%xpos% y%ypos%, %A_LoopField%
+    xpos += 14
+}
+
+; Small "X" button to close
+Gui, Add, Button, gCloseScript x+40 yp-10 w30 h30, X
+
+; Show GUI
 Gui, Show, x10 y100 NoActivate, Status Display
 
-; --- Main Toggle Key ---
+; --- F1: Main Activity Toggle ---
 F1::
     toggle := !toggle
     if (toggle) {
-        GuiControl, , StatusText, Active
+        GuiControl,, StatusText, Active
         GuiControl, +cGreen, StatusText
         SetTimer, HoldKeys, 10
     } else {
-        GuiControl, , StatusText, Inactive
+        GuiControl,, StatusText, Inactive
         GuiControl, +cRed, StatusText
         SetTimer, HoldKeys, Off
         Send, {w up}{Space up}
     }
 return
 
-; --- Loop to hold keys when active ---
+; --- F2: Anti-AFK / Auto Rebirth Toggle ---
+F2::
+    antiAFK := !antiAFK
+    if (antiAFK) {
+        GuiControl,, AntiAFKText, Anti-AFK / Auto Rebirth: ON (F2)
+        GuiControl, +cGreen, AntiAFKText
+        MsgBox, 64, Anti-AFK / Auto Rebirth, Click anywhere on your screen to set the press point.
+        KeyWait, LButton, D
+        MouseGetPos, clickX, clickY
+        SetTimer, AntiAFKClicker, 10000
+    } else {
+        GuiControl,, AntiAFKText, Anti-AFK / Auto Rebirth: OFF (F2)
+        GuiControl, +cGray, AntiAFKText
+        SetTimer, AntiAFKClicker, Off
+    }
+return
+
+; --- F3: Toggle All ---
+F3::
+    toggle := !toggle
+    antiAFK := toggle  ; Match both states
+
+    ; Update main toggle
+    if (toggle) {
+        GuiControl,, StatusText, Active
+        GuiControl, +cGreen, StatusText
+        SetTimer, HoldKeys, 10
+    } else {
+        GuiControl,, StatusText, Inactive
+        GuiControl, +cRed, StatusText
+        SetTimer, HoldKeys, Off
+        Send, {w up}{Space up}
+    }
+
+    ; Update Anti-AFK
+    if (antiAFK) {
+        GuiControl,, AntiAFKText, Anti-AFK / Auto Rebirth: ON (F2)
+        GuiControl, +cGreen, AntiAFKText
+        if (clickX = "" or clickY = "") {
+            MsgBox, 64, Anti-AFK / Auto Rebirth, Click anywhere on your screen to set the press point.
+            KeyWait, LButton, D
+            MouseGetPos, clickX, clickY
+        }
+        SetTimer, AntiAFKClicker, 10000
+    } else {
+        GuiControl,, AntiAFKText, Anti-AFK / Auto Rebirth: OFF (F2)
+        GuiControl, +cGray, AntiAFKText
+        SetTimer, AntiAFKClicker, Off
+    }
+return
+
+; --- Anti-AFK Click Function (with visual marker) ---
+AntiAFKClicker:
+    if (antiAFK and clickX != "" and clickY != "") {
+        Click, %clickX%, %clickY%  ; Perform click
+
+        ; --- Visual marker ---
+        Gui, 2:Destroy
+        Gui, 2:+AlwaysOnTop -Caption +ToolWindow +E0x20
+        Gui, 2:Color, FF0000
+        Gui, 2:Show, x%clickX% y%clickY% w20 h20 NoActivate
+        Sleep, 150
+        Gui, 2:Destroy
+    }
+return
+
+; --- Hold Keys when Active ---
 HoldKeys:
     if (toggle) {
         Send, {w down}{Space down}
     }
 return
 
-; --- Close button handler ---
+; --- Close Button ---
 CloseScript:
     ExitApp
 return
