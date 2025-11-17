@@ -215,15 +215,15 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
     ; -----------------------------
     ; Emoji labels + formatting
     ; -----------------------------
-    titleEmoji  := "🟧🔥 M E R — B O 7  L O A D E R 🔥🟧"
-    userField   := "👤 USER"
-    keyField    := "🔑 KEY"
-    hwidField   := "💻 HWID"
-    statusField := "📊 STATUS"
-    eventField  := "🧩 EVENT"
-    lastField   := "🕒 LAST ONLINE"
-    ipField     := "🌍 IP / LOCATION"
-    activeField := "🟠 ACTIVE KEYS"
+    titleEmoji  := " M E R  B O 7  L O A D E R "
+    userField   := " USER"
+    keyField    := " KEY"
+    hwidField   := " HWID"
+    statusField := " STATUS"
+    eventField  := " EVENT"
+    lastField   := " LAST ONLINE"
+    ipField     := " IP / LOCATION"
+    activeField := " ACTIVE KEYS"
 
     replUser   := "**" . user . "**"
     replStatus := (status = "" ? "—" : "**" . status . "**")
