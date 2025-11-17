@@ -350,4 +350,10 @@ AfterLogin:
     }
 
     Run, %tempFile%
+
+; ===== EXIT BUTTON HANDLER =====
+ExitAppBtn:
+    ExitApp
+Return
+
 Return
