@@ -113,6 +113,28 @@ FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
 }
 
 ; ==========================================================
+; ACTIVE KEY SUMMARY (for dashboard embed)
+; ==========================================================
+
+GetActiveKeysSummary() {
+    global licenseKey, ActiveKeyExpires
+
+    if (licenseKey = "")
+        return "No active key on this device."
+
+    ; Format expiry nicely
+    if (ActiveKeyExpires = "" || ActiveKeyExpires = "0") {
+        expText := "No expiry (lifetime)"
+    } else if (StrLen(ActiveKeyExpires) = 8) {
+        expText := SubStr(ActiveKeyExpires,1,4) "-" SubStr(ActiveKeyExpires,5,2) "-" SubStr(ActiveKeyExpires,7,2)
+    } else {
+        expText := ActiveKeyExpires
+    }
+
+    return "Key: " licenseKey "`nExpires: " expText
+}
+
+; ==========================================================
 ; DISCORD DASHBOARD WEBHOOK
 ; ==========================================================
 
