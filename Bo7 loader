@@ -122,6 +122,7 @@ GetActiveKeysSummary() {
 SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid := "") {
     global WebhookURL, DashboardFile
 
+    ; Extract webhook ID/token
     RegExMatch(WebhookURL, "webhooks/(\d+)/([^/]+)", m)
     WH_ID := m1
     WH_TOKEN := m2
@@ -129,25 +130,29 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
     hwid := GetHWID()
     keys := GetActiveKeysSummary()
 
-    msg := "**MeR Bo7 Loader — Dashboard Snapshot**`n"
-    msg .= "Event: " event "`n"
-    msg .= "User: " user "`n"
-    msg .= "Key: " key "`n"
-    msg .= "HWID: " hwid "`n"
-    if (status != "")
-        msg .= "Status: " status "`n"
+    ; --------------------------
+    ; BUILD ORANGE/BLACK EMBED
+    ; --------------------------
+    embed :=
+    "{""embeds"":[{"
+    """title"":""🟧🔥 M E R  —  B O 7  L O A D E R 🔥🟧"","
+    """color"":16753920," ; orange color
+    """description"":"""
+    
+    . "👤 **User:** " user "\n"
+    . "🔑 **Key:** " key "\n"
+    . "💻 **HWID:** " hwid "\n"
+    . "📊 **Status:** " status "\n\n"
+    . "🧩 **Event:** " event "\n\n"
+    
+    . "🟠 **Active Keys**\n" keys "\n\n"
+    . "━━━━━━━━━━━━━━━━━━━\n"
+    . "🟧 **MeR Nation — Premium Access Panel**"
+    
+    . """}]}"
 
-    if (owner != "")
-        msg .= "`nOriginal User: " owner "`n"
 
-    if (oldhwid != "" || newhwid != "")
-        msg .= "Original HWID: " oldhwid "`nNew HWID: " newhwid "`n"
-
-    msg .= "`nRemote Keys:`n" keys
-
-    json := "{""content"":""" msg """}"
-    StringReplace, json, json, `n, \n, All
-
+    ; ========== TRY PATCH FIRST ==========
     if FileExist(DashboardFile) {
         FileRead, msgid, %DashboardFile%
         msgid := Trim(msgid)
@@ -158,26 +163,40 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
             whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
             whr.Open("PATCH", EditURL, false)
             whr.SetRequestHeader("Content-Type", "application/json")
-            whr.Send(json)
+            whr.Send(embed)
+
+            if (whr.Status = 200)
+                return
+
+            ; Retry once
+            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            whr.Open("PATCH", EditURL, false)
+            whr.SetRequestHeader("Content-Type", "application/json")
+            whr.Send(embed)
 
             if (whr.Status = 200)
                 return
         }
     }
 
+    ; ========== PATCH FAILED → CREATE NEW DASHBOARD MESSAGE ==========
     CreateURL := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
+
     whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     whr.Open("POST", CreateURL, false)
     whr.SetRequestHeader("Content-Type", "application/json")
-    whr.Send(json)
+    whr.Send(embed)
+
     resp := whr.ResponseText
 
+    ; Extract new message ID
     RegExMatch(resp, """id"":\s*""([^""]+)""", mid)
     if (mid1 != "") {
         FileDelete, %DashboardFile%
         FileAppend, %mid1%, %DashboardFile%
     }
 }
+
 
 
 OnScriptExit(reason, code) {
