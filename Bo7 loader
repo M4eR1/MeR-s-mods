@@ -1,5 +1,5 @@
 ; ==========================================================
-; MeR Bo7 Loader — Username-Bound Keys (AHK v1 Clean Version)
+; MeR Bo7 Loader — Username-Bound Licensing (AHK v1 Clean)
 ; ==========================================================
 
 #NoEnv
@@ -21,7 +21,7 @@ DashboardFile := ConfigDir "\dashboard_id.txt"
 global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 
 ; ==========================================================
-; VALIDATE USERNAME (≥ 3 letters, return lowercase)
+; USERNAME VALIDATION
 ; ==========================================================
 ValidateUsername(name) {
     if (StrLen(name) < 3)
@@ -32,11 +32,11 @@ ValidateUsername(name) {
 }
 
 ; ==========================================================
-; LOAD REMOTE KEYS
+; LOAD REMOTE KEYS (AHK v1 SAFE)
 ; ==========================================================
 LoadRemoteKeys() {
     global KeysURL, KeyDB
-    KeyDB := []
+    KeyDB := []   ; create new array
 
     temp := A_Temp "\Bo7_keys_remote.txt"
     url  := KeysURL . "?cache=" . A_TickCount
@@ -44,13 +44,19 @@ LoadRemoteKeys() {
     UrlDownloadToFile, %url%, %temp%
     FileRead, contents, %temp%
 
-    Loop, Parse, contents, `n, `r {
+    Loop, Parse, contents, `n, `r
+    {
         line := Trim(A_LoopField)
-        if (line = "" || SubStr(line,1,1)=";")
+        if (line = "")
+            continue
+        if (SubStr(line,1,1) = ";")
             continue
 
         StringSplit, part, line, |
-        KeyDB.Push({ key: Trim(part1), expires: Trim(part2) })
+        item := {}
+        item.key := Trim(part1)
+        item.expires := Trim(part2)
+        KeyDB.Push(item)
     }
 }
 
@@ -62,7 +68,7 @@ GetKeyStatus(k, ByRef out := "") {
     out := ""
     today := SubStr(A_Now, 1, 8)
 
-    for i, obj in KeyDB {
+    for index, obj in KeyDB {
         if (obj.key = k) {
             out := obj.expires
             if (out = "" || out = "0" || today <= out)
@@ -74,25 +80,21 @@ GetKeyStatus(k, ByRef out := "") {
 }
 
 ; ==========================================================
-; KEY ↔ USERNAME BINDING (AHK v1 SAFE)
+; KEY-USERNAME BINDING
 ; ==========================================================
 CheckKeyOwnership(key, username) {
     global UsedKeysFile
 
-    ; Convert username to lowercase
-    StringLower, LowerUser, username
+    StringLower, LowerUser, username ; convert to lowercase
 
-    ; Read stored data
     IniRead, StoredUser,  %UsedKeysFile%, %key%, User,
     IniRead, StoredLower, %UsedKeysFile%, %key%, LowerUser,
     IniRead, UserExists,  %UsedKeysFile%, USER_LIST, %LowerUser%, 0
 
-    ; -----------------------
     ; First time key is used
-    ; -----------------------
     if (StoredUser = "") {
         if (UserExists = 1) {
-            MsgBox, 48, Username Taken, This username is already used by someone else.
+            MsgBox, 48, Username Taken, This username is already used by another user.
             return "denied"
         }
 
@@ -102,20 +104,17 @@ CheckKeyOwnership(key, username) {
         return "ok"
     }
 
-    ; -----------------------
-    ; Key is already bound
-    ; -----------------------
+    ; Key already belongs to someone
     StringLower, StoredLowerFix, StoredLower
-
     if (StoredLowerFix = LowerUser)
-        return "ok" ; same user → allow unlimited usage
+        return "ok"   ; same user → allow access
 
-    MsgBox, 48, Key Locked, This key belongs to:`n%StoredUser%.
+    MsgBox, 48, Locked, This key belongs to:`n%StoredUser%.
     return "denied"
 }
 
 ; ==========================================================
-; IP INFO
+; IP LOOKUP
 ; ==========================================================
 FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
@@ -134,14 +133,16 @@ FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
 ; ==========================================================
 GetActiveKeysSummary() {
     global licenseKey, ActiveKeyExpires
+
     if (licenseKey = "")
         return "None"
 
-    if (ActiveKeyExpires = "" or ActiveKeyExpires = "0") {
+    if (ActiveKeyExpires = "" or ActiveKeyExpires = "0")
         exp := "Lifetime"
-    } else if (StrLen(ActiveKeyExpires) = 8) {
+    else if (StrLen(ActiveKeyExpires) = 8)
         exp := SubStr(ActiveKeyExpires,1,4) "-" SubStr(ActiveKeyExpires,5,2) "-" SubStr(ActiveKeyExpires,7,2)
-    } else exp := ActiveKeyExpires
+    else
+        exp := ActiveKeyExpires
 
     return "Key: " licenseKey "`nExpires: " exp
 }
@@ -166,7 +167,6 @@ SendWebhook(event, user, key, status := "") {
 
     FormatTime, t1,, yyyy-MM-dd HH:mm:ss
     FormatTime, t2,, HH:mm
-
     StringUpper, STAT, status
 
     embedColor := (STAT = "DENIED" or STAT = "ERROR") ? "15548997"
@@ -215,7 +215,7 @@ SendWebhook(event, user, key, status := "") {
 }
 
 ; ==========================================================
-; EXIT WEBHOOK
+; EXIT HANDLER
 ; ==========================================================
 OnScriptExit(reason, code) {
     global username, licenseKey
@@ -243,6 +243,7 @@ if (Registered != 1 or SavedUser = "") {
 } else {
     username   := SavedUser
     licenseKey := SavedKey
+
     status := GetKeyStatus(licenseKey, ActiveKeyExpires)
 
     if (status = "valid") {
@@ -256,7 +257,7 @@ if (Registered != 1 or SavedUser = "") {
 Return
 
 ; ==========================================================
-; REGISTRATION GUI
+; GUI — REGISTRATION
 ; ==========================================================
 ShowRegisterGui:
     Gui, New, +AlwaysOnTop -SysMenu +ToolWindow, MeR Loader
@@ -287,7 +288,7 @@ RegisterUser:
 
     lower := ValidateUsername(GuiUsername)
     if (lower = "short") {
-        MsgBox, 48, Invalid Username, Username must be 3+ characters.
+        MsgBox, 48, Invalid Username, Username must be at least 3 characters.
         Return
     }
 
@@ -314,15 +315,15 @@ RegisterUser:
 Return
 
 ; ==========================================================
-; NEW KEY GUI
+; GUI — NEW KEY
 ; ==========================================================
 ShowNewKeyGui:
     Gui, New, +AlwaysOnTop -SysMenu +ToolWindow, Key Needed
     Gui, Color, 111111
     Gui, Font, s10 cFFA500
 
-    label := (NewKeyReason = "expired") ? "Your key expired." : "Invalid key."
-    Gui, Add, Text, x0 y20 w280 Center cFFA500, %label%
+    txt := (NewKeyReason = "expired") ? "Your key has expired." : "Your key is invalid."
+    Gui, Add, Text, x0 y20 w280 Center cFFA500, %txt%
     Gui, Add, Text, x0 y50 w280 Center cFFFFFF, Enter new key
 
     Gui, Add, Edit, x10 y90 w260 vGuiNewKey Password
@@ -334,7 +335,7 @@ Return
 SubmitNewKey:
     Gui, Submit
     if (GuiNewKey = "") {
-        MsgBox, 48, Missing, Enter key.
+        MsgBox, 48, Missing, Enter a key.
         Return
     }
 
@@ -358,7 +359,7 @@ SubmitNewKey:
 Return
 
 ; ==========================================================
-; AFTER LOGIN
+; AFTER LOGIN → RUN MAIN SCRIPT
 ; ==========================================================
 AfterLogin:
     SendWebhook("Script launched", username, licenseKey, "ON")
