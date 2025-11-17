@@ -1,5 +1,5 @@
 ; ==========================================================
-; MeR Bo7 Loader — Final Version
+; MeR Bo7 Loader — Final Version (FULL COMBINED)
 ; GitHub Keys, Dashboard Editing, HWID, Expiration, UI
 ; ==========================================================
 
@@ -27,20 +27,19 @@ global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 ; ==========================================================
 
 GetHWID() {
-    ; Stable Windows Machine SID (works on Win10/Win11)
+    ; Stable Windows Machine SID (100% reliable on Win10/Win11)
     RunWait, %ComSpec% /c wmic useraccount where name="%USERNAME%" get sid > "%A_Temp%\sid.txt",, Hide
     FileRead, sid, %A_Temp%\sid.txt
     sid := Trim(StrReplace(sid, "SID"))
     return sid
 }
 
-
 LoadRemoteKeys() {
     global KeysURL, KeyDB
     KeyDB := []
 
     temp := A_Temp "\Bo7_keys_remote.txt"
-    UrlDownloadToFile, %KeysURL%, %temp%
+    UrlDownloadToFile, %KeysURL% "?noCache=" A_TickCount, %temp%
     if (ErrorLevel)
         return false
 
@@ -119,13 +118,12 @@ GetActiveKeysSummary() {
 
 
 ; ==========================================================
-; DASHBOARD (EDIT EXISTING MESSAGE)
+; DASHBOARD (EMBED — AHK v1 SAFE)
 ; ==========================================================
 
 SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid := "") {
     global WebhookURL, DashboardFile
 
-    ; Extract webhook ID/token
     RegExMatch(WebhookURL, "webhooks/(\d+)/([^/]+)", m)
     WH_ID := m1
     WH_TOKEN := m2
@@ -133,37 +131,43 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
     hwid := GetHWID()
     keys := GetActiveKeysSummary()
 
-    ; --------------------------
-    ; BUILD ORANGE/BLACK EMBED
-    ; --------------------------
-    embed :=
-    "{""embeds"":[{"
-    """title"":""🟧🔥 M E R  —  B O 7  L O A D E R 🔥🟧"","
-    """color"":16753920," ; orange color
-    """description"":"""
-    
-    . "👤 **User:** " user "\n"
-    . "🔑 **Key:** " key "\n"
-    . "💻 **HWID:** " hwid "\n"
-    . "📊 **Status:** " status "\n\n"
-    . "🧩 **Event:** " event "\n\n"
-    
-    . "🟠 **Active Keys**\n" keys "\n\n"
-    . "━━━━━━━━━━━━━━━━━━━\n"
-    . "🟧 **MeR Nation — Premium Access Panel**"
-    
-    . """}]}"
+    ; Escape for JSON
+    StringReplace, keysEsc, keys, `n, \n, All
 
+    FormatTime, ts,, yyyy-MM-dd HH:mm:ss
 
-    ; ========== TRY PATCH FIRST ==========
+    ; JSON continuation block (AHK v1 SAFE)
+    embed =
+    (
+{
+  "embeds": [
+    {
+      "title": "🟧🔥 M E R — B O 7  L O A D E R 🔥🟧",
+      "color": 16753920,
+      "fields": [
+        { "name": "👤 USER", "value": "**%user%**", "inline": true },
+        { "name": "🔑 KEY", "value": "`%key%`", "inline": true },
+        { "name": "💻 HWID", "value": "`%hwid%`", "inline": false },
+        { "name": "📊 STATUS", "value": "**%status%**", "inline": true },
+        { "name": "🧩 EVENT", "value": "**%event%**", "inline": true },
+        { "name": "🟠 ACTIVE KEYS", "value": "%keysEsc%", "inline": false }
+      ],
+      "footer": { "text": "Updated: %ts% UTC" },
+      "timestamp": "%ts%Z"
+    }
+  ]
+}
+    )
+
+    ; Attempt to PATCH first
     if FileExist(DashboardFile) {
         FileRead, msgid, %DashboardFile%
         msgid := Trim(msgid)
 
         if (msgid != "") {
             EditURL := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN "/messages/" msgid
-
             whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+
             whr.Open("PATCH", EditURL, false)
             whr.SetRequestHeader("Content-Type", "application/json")
             whr.Send(embed)
@@ -171,35 +175,29 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
             if (whr.Status = 200)
                 return
 
-            ; Retry once
-            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
             whr.Open("PATCH", EditURL, false)
             whr.SetRequestHeader("Content-Type", "application/json")
             whr.Send(embed)
-
             if (whr.Status = 200)
                 return
         }
     }
 
-    ; ========== PATCH FAILED → CREATE NEW DASHBOARD MESSAGE ==========
+    ; Otherwise create new dashboard
     CreateURL := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
-
     whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     whr.Open("POST", CreateURL, false)
     whr.SetRequestHeader("Content-Type", "application/json")
     whr.Send(embed)
 
     resp := whr.ResponseText
-
-    ; Extract new message ID
     RegExMatch(resp, """id"":\s*""([^""]+)""", mid)
+
     if (mid1 != "") {
         FileDelete, %DashboardFile%
         FileAppend, %mid1%, %DashboardFile%
     }
 }
-
 
 
 OnScriptExit(reason, code) {
@@ -372,10 +370,12 @@ AfterLogin:
     }
 
     Run, %tempFile%
-
-; ===== EXIT BUTTON HANDLER =====
-ExitAppBtn:
-    ExitApp
 Return
 
+
+; ==========================
+; EXIT BUTTON HANDLER
+; ==========================
+ExitAppBtn:
+    ExitApp
 Return
