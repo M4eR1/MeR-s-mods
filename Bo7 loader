@@ -1,9 +1,9 @@
 ; ==========================================================
-; MeR Bo7 Loader — Single-Use Keys / No Emojis / No HWID
-; GitHub Keys, Expiration, Dashboard, IP Logging, Last Online
-; Key is bound to USERNAME (case-insensitive) with rules:
-; - Username >= 3 chars
-; - No two users can share same username
+; MeR Bo7 Loader — Username-Bound Keys (AHK v1 Compatible)
+; - Key binds permanently to username (case-insensitive)
+; - Username must be ≥ 3 chars
+; - No duplicate usernames
+; - Same user can reopen unlimited times
 ; ==========================================================
 
 #NoEnv
@@ -25,9 +25,18 @@ DashboardFile := ConfigDir "\dashboard_id.txt"
 global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 
 ; ==========================================================
-; CORE FUNCTIONS
+; VALIDATE USERNAME (≥ 3 letters + return lowercase)
 ; ==========================================================
+ValidateUsername(name) {
+    if (StrLen(name) < 3)
+        return "short"
+    StringLower, lower, name
+    return lower
+}
 
+; ==========================================================
+; LOAD REMOTE KEYS
+; ==========================================================
 LoadRemoteKeys() {
     global KeysURL, KeyDB
     KeyDB := []
@@ -40,8 +49,7 @@ LoadRemoteKeys() {
     if (ErrorLevel)
         return false
 
-    Loop, Parse, contents, `n, `r
-    {
+    Loop, Parse, contents, `n, `r {
         line := Trim(A_LoopField)
         if (line = "" || SubStr(line,1,1)=";")
             Continue
@@ -52,6 +60,9 @@ LoadRemoteKeys() {
     return true
 }
 
+; ==========================================================
+; CHECK KEY STATUS
+; ==========================================================
 GetKeyStatus(thisKey, ByRef expOut := "") {
     global KeyDB
     expOut := ""
@@ -68,74 +79,54 @@ GetKeyStatus(thisKey, ByRef expOut := "") {
     return "unknown"
 }
 
-; --------------------------
-; USERNAME VALIDATION
-; --------------------------
-ValidateUsername(name) {
-    if (StrLen(name) < 3)
-        return "short"
-    Lower := StrLower(name)
-    return Lower
-}
-
 ; ==========================================================
-; KEY ↔ USER BINDING SYSTEM
+; KEY ↔ USERNAME BINDING (AUTOHOTKEY V1 COMPATIBLE)
 ; ==========================================================
-; Rules:
-; - First time a key is used, it binds to that username
-; - Username is case-insensitive (stored as LowerUser)
-; - No duplicate usernames (global list in USER_LIST)
-; - Same username can reuse same key unlimited times
-; ==========================================================
-
 CheckKeyOwnership(key, username) {
     global UsedKeysFile
 
-    ; Normalize username (case-insensitive)
-    LowerUser := StrLower(username)
+    ; Lowercase the username
+    StringLower, LowerUser, username
 
-    ; Read stored binding for this key
     IniRead, StoredUser,   %UsedKeysFile%, %key%, User,
     IniRead, StoredLower,  %UsedKeysFile%, %key%, LowerUser,
     IniRead, UserExists,   %UsedKeysFile%, USER_LIST, %LowerUser%, 0
 
-    ; -----------------------------
-    ; FIRST TIME THIS KEY IS USED
-    ; -----------------------------
+    ; -----------------------------------------------------
+    ; FIRST TIME KEY IS USED
+    ; -----------------------------------------------------
     if (StoredUser = "") {
-        ; If username already taken by some other key → block
         if (UserExists = 1) {
-            MsgBox, 48, Username Exists, This username is already used by another user. Please choose a different username.
+            MsgBox, 48, Username Used, This username is already taken by another user.`nChoose a different username.
             return "denied"
         }
 
-        ; Bind key to this username and mark username as taken
+        ; Bind key ↔ username
         IniWrite, %username%,  %UsedKeysFile%, %key%, User
         IniWrite, %LowerUser%, %UsedKeysFile%, %key%, LowerUser
         IniWrite, 1,           %UsedKeysFile%, USER_LIST, %LowerUser%
         return "ok"
     }
 
-    ; -----------------------------
-    ; KEY ALREADY BOUND TO A USER
-    ; -----------------------------
-    if (StrLower(StoredLower) = LowerUser) {
-        ; Same user (case-insensitive) → allow unlimited usage
-        return "ok"
+    ; -----------------------------------------------------
+    ; KEY ALREADY BOUND → CHECK IF SAME USER
+    ; -----------------------------------------------------
+    StringLower, StoredLowerFix, StoredLower
+
+    if (StoredLowerFix = LowerUser) {
+        return "ok"   ; same username → allow unlimited usage
     }
 
-    ; -----------------------------
-    ; WRONG USER TRYING TO USE KEY
-    ; -----------------------------
-    MsgBox, 48, Key Locked, This key is already registered to user: %StoredUser%.
-    SendWebhook("Wrong user tried to use key", username, key, "DENIED")
+    ; -----------------------------------------------------
+    ; WRONG USER
+    ; -----------------------------------------------------
+    MsgBox, 48, Key Locked, This key is bound to username:`n%StoredUser%.
     return "denied"
 }
 
 ; ==========================================================
-; IP + GEO LOOKUP (webhook only)
+; IP + GEO LOOKUP
 ; ==========================================================
-
 FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     wh.Open("GET", "https://ipinfo.io/json", false)
@@ -145,46 +136,36 @@ FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
 
     resp := wh.ResponseText
 
-    RegExMatch(resp, """ip"":\s*""([^""]+)""", mIP)
-    ip := mIP1
-
-    RegExMatch(resp, """country"":\s*""([^""]+)""", mC)
-    country := mC1
-
-    RegExMatch(resp, """city"":\s*""([^""]+)""", mCity)
-    city := mCity1
-
-    RegExMatch(resp, """org"":\s*""([^""]+)""", mO)
-    org := mO1
+    RegExMatch(resp, """ip"":\s*""([^""]+)""", mIP)    , ip := mIP1
+    RegExMatch(resp, """country"":\s*""([^""]+)""", mC), country := mC1
+    RegExMatch(resp, """city"":\s*""([^""]+)""", mCity), city := mCity1
+    RegExMatch(resp, """org"":\s*""([^""]+)""", mO)    , org := mO1
 
     return true
 }
 
 ; ==========================================================
-; ACTIVE KEY SUMMARY (for dashboard embed)
+; ACTIVE KEY SUMMARY FOR EMBED
 ; ==========================================================
-
 GetActiveKeysSummary() {
     global licenseKey, ActiveKeyExpires
 
     if (licenseKey = "")
-        return "No active key on this device."
+        return "No active key."
 
-    if (ActiveKeyExpires = "" || ActiveKeyExpires = "0") {
-        expText := "No expiry (lifetime)"
-    } else if (StrLen(ActiveKeyExpires) = 8) {
+    if (ActiveKeyExpires = "" || ActiveKeyExpires = "0")
+        expText := "Lifetime"
+    else if (StrLen(ActiveKeyExpires) = 8)
         expText := SubStr(ActiveKeyExpires,1,4) "-" SubStr(ActiveKeyExpires,5,2) "-" SubStr(ActiveKeyExpires,7,2)
-    } else {
+    else
         expText := ActiveKeyExpires
-    }
 
     return "Key: " licenseKey "`nExpires: " expText
 }
 
 ; ==========================================================
-; DISCORD DASHBOARD WEBHOOK
+; DISCORD WEBHOOK
 ; ==========================================================
-
 SendWebhook(event, user, key, status := "") {
     global DashboardFile, WebhookURL
 
@@ -204,8 +185,7 @@ SendWebhook(event, user, key, status := "") {
     FormatTime, localNow,, HH:mm
     lastText := "Today at " localNow
 
-    statusUpper := status
-    StringUpper, statusUpper, statusUpper
+    StringUpper, statusUpper, status
 
     if (statusUpper = "REGISTERED" || statusUpper = "RENEWED" || statusUpper = "ON" || statusUpper = "OFF")
         embedColor := "5763719"
@@ -249,13 +229,16 @@ SendWebhook(event, user, key, status := "") {
     StringReplace, embed, embed, __KEYS__,   %keysEsc%,   All
     StringReplace, embed, embed, __TS__,     %tsUTC%,     All
 
+    url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
+
+    ; If dashboard file exists, PATCH old message
     if FileExist(DashboardFile) {
         FileRead, msgid, %DashboardFile%
         msgid := Trim(msgid)
         if (msgid != "") {
-            url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN "/messages/" msgid
+            patchUrl := url "/messages/" msgid
             wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            wh.Open("PATCH", url, false)
+            wh.Open("PATCH", patchUrl, false)
             wh.SetRequestHeader("Content-Type","application/json")
             wh.Send(embed)
             if (wh.Status = 200)
@@ -263,7 +246,7 @@ SendWebhook(event, user, key, status := "") {
         }
     }
 
-    url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
+    ; Else POST new
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     wh.Open("POST", url, false)
     wh.SetRequestHeader("Content-Type","application/json")
@@ -283,9 +266,8 @@ OnScriptExit(reason, code) {
 }
 
 ; ==========================================================
-; STARTUP LOGIC
+; STARTUP
 ; ==========================================================
-
 if !FileExist(ConfigDir)
     FileCreateDir, %ConfigDir%
 
@@ -319,7 +301,6 @@ Return
 ; ==========================================================
 ; GUI: REGISTRATION
 ; ==========================================================
-
 ShowRegisterGui:
     Gui, New, +AlwaysOnTop +ToolWindow -SysMenu, MeR Loader
     Gui, Color, 111111
@@ -342,13 +323,11 @@ Return
 RegisterUser:
     Gui, Submit
     if (GuiUsername = "" || GuiKey = "") {
-        MsgBox, 48, Missing Info, Fill all fields.
+        MsgBox, 48, Missing Info, Please fill all fields.
         Return
     }
 
-    ; -------------------------
     ; Validate username rules
-    ; -------------------------
     lower := ValidateUsername(GuiUsername)
     if (lower = "short") {
         MsgBox, 48, Invalid Username, Username must be at least 3 characters.
@@ -367,10 +346,6 @@ RegisterUser:
     username   := GuiUsername
     licenseKey := GuiKey
 
-    ; This will:
-    ; - Bind key to username if first time
-    ; - Ensure username isn't already used by someone else
-    ; - Allow reuse if same username
     if (CheckKeyOwnership(licenseKey, username) != "ok")
         Return
 
@@ -387,7 +362,6 @@ Return
 ; ==========================================================
 ; GUI: NEW KEY PROMPT
 ; ==========================================================
-
 ShowNewKeyGui:
     Gui, New, +AlwaysOnTop +ToolWindow -SysMenu, Key Needed
     Gui, Color, 111111
@@ -421,7 +395,6 @@ SubmitNewKey:
 
     licenseKey := GuiNewKey
 
-    ; Re-validate ownership / username binding for new key
     if (CheckKeyOwnership(licenseKey, username) != "ok")
         Return
 
@@ -435,7 +408,6 @@ Return
 ; ==========================================================
 ; AFTER LOGIN → RUN MAIN SCRIPT
 ; ==========================================================
-
 AfterLogin:
     SendWebhook("Script launched", username, licenseKey, "ON")
 
@@ -453,9 +425,8 @@ AfterLogin:
 Return
 
 ; ==========================================================
-; EXIT HANDLER
+; EXIT BUTTON
 ; ==========================================================
-
 ExitAppBtn:
     ExitApp
 Return
