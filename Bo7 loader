@@ -1,12 +1,6 @@
 ; ==========================================================
-; MeR Bo7 Loader — Final Version with:
-; - GitHub keys
-; - HWID lock
-; - Expiration
-; - Orange/Black GUI
-; - Discord dashboard (colored per event)
-; - Last online
-; - IP + Country logging (webhook only)
+; MeR Bo7 Loader — Single-Use Keys / No Emojis / No HWID
+; GitHub Keys, Expiration, Dashboard, IP Logging, Last Online
 ; ==========================================================
 
 #NoEnv
@@ -16,13 +10,13 @@
 SetBatchLines, -1
 
 ; ---------------- SETTINGS ----------------
-WebhookURL   := "https://discord.com/api/webhooks/1439780147606847651/TwUrdBrJJ68SAaqvRfxv8nn0q86wK77_HVD52mr42JyM7MisBottKawyMnq-MM5Nz2us"
+WebhookURL    := "https://discord.com/api/webhooks/1439780147606847651/TwUrdBrJJ68SAaqvRfxv8nn0q86wK77_HVD52mr42JyM7MisBottKawyMnq-MM5Nz2us"
 MainScriptURL := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Bo7"
-KeysURL      := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Keys%20Bo7"
+KeysURL       := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Keys%20Bo7"
 
 ConfigDir     := A_AppData "\MeR_Bo7"
 ConfigFile    := ConfigDir "\config.ini"
-KeyLockFile   := ConfigDir "\keys_lock.ini"
+UsedKeysFile  := ConfigDir "\used_keys.ini"
 DashboardFile := ConfigDir "\dashboard_id.txt"
 
 global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
@@ -30,12 +24,6 @@ global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 ; ==========================================================
 ; CORE FUNCTIONS
 ; ==========================================================
-
-GetHWID() {
-    RunWait, %ComSpec% /c wmic useraccount where name="%USERNAME%" get sid > "%A_Temp%\sid.txt",, Hide
-    FileRead, sid, %A_Temp%\sid.txt
-    return Trim(StrReplace(sid, "SID"))
-}
 
 LoadRemoteKeys() {
     global KeysURL, KeyDB
@@ -77,35 +65,23 @@ GetKeyStatus(thisKey, ByRef expOut := "") {
     return "unknown"
 }
 
+; ==========================================================
+; SINGLE-USE KEY SYSTEM
+; ==========================================================
+
 CheckKeyOwnership(key, username) {
-    global KeyLockFile
-    hwid := GetHWID()
+    global UsedKeysFile
 
-    IniRead, savedHWID, %KeyLockFile%, %key%, UsedByHWID,
-    IniRead, savedUser, %KeyLockFile%, %key%, UsedByUser,
+    IniRead, UsedFlag, %UsedKeysFile%, %key%, Used, 0
 
-    if (savedHWID = "" && savedUser = "") {
-        IniWrite, %hwid%,     %KeyLockFile%, %key%, UsedByHWID
-        IniWrite, %username%, %KeyLockFile%, %key%, UsedByUser
-        return "ok"
+    if (UsedFlag = 1) {
+        MsgBox, 48, Key Used, This key has already been used once. Each key can only be activated a single time.
+        SendWebhook("Key already used before", username, key, "DENIED")
+        return "denied"
     }
 
-    if (savedHWID = hwid)
-        return "ok"
-
-    SendWebhook("Key already used on another device", username, key, "WARNING")
-    MsgBox, 48, Key In Use, This key is already linked to another PC.`nContact MeR.
-    return "denied"
-}
-
-GetActiveKeysSummary() {
-    global KeyDB
-    list := ""
-    for i, obj in KeyDB {
-        exp := (obj.expires = "" || obj.expires = "0") ? "lifetime" : obj.expires
-        list .= obj.key " (exp: " exp ")\n"
-    }
-    return list
+    IniWrite, 1, %UsedKeysFile%, %key%, Used
+    return "ok"
 }
 
 ; ==========================================================
@@ -137,73 +113,55 @@ FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
 }
 
 ; ==========================================================
-; DISCORD WEBHOOK DASHBOARD (COLORED + IP + LAST ONLINE)
+; DISCORD DASHBOARD WEBHOOK
 ; ==========================================================
 
-SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid := "") {
-    global WebhookURL, DashboardFile
+SendWebhook(event, user, key, status := "") {
+    global DashboardFile, WebhookURL
 
     RegExMatch(WebhookURL, "webhooks/(\d+)/([^/]+)", w)
     WH_ID := w1, WH_TOKEN := w2
 
-    hwid := GetHWID()
     keys := GetActiveKeysSummary()
     StringReplace, keysEsc, keys, `n, \n, All
 
-    ; ----- IP / GEO -----
     ip := "", country := "", city := "", org := ""
-    if (FetchIPInfo(ip, country, city, org)) {
-        ipText := "IP: " ip
-        if (country != "")
-            ipText .= "\nCountry: " country
-        if (city != "")
-            ipText .= "\nCity: " city
-        if (org != "")
-            ipText .= "\nISP: " org
-    } else {
-        ipText := "Unknown (lookup failed)"
-    }
-    StringReplace, ipEsc, ipText, `n, \n, All
+    FetchIPInfo(ip, country, city, org)
 
-    ; ----- Time -----
+    ipBlock := "IP: " ip "\nCountry: " country "\nCity: " city "\nISP: " org
+    StringReplace, ipEsc, ipBlock, `n, \n, All
+
     FormatTime, tsUTC,, yyyy-MM-dd HH:mm:ss
     FormatTime, localNow,, HH:mm
-    lastText := "Today at " localNow " (local)"
-    ; no newlines in lastText, safe
+    lastText := "Today at " localNow
 
-    ; ----- Embed color per status -----
-    ; green for OK, yellow warning, red error, blue default
     statusUpper := status
     StringUpper, statusUpper, statusUpper
 
     if (statusUpper = "REGISTERED" || statusUpper = "RENEWED" || statusUpper = "ON" || statusUpper = "OFF")
-        embedColor := "5763719"        ; green-ish
+        embedColor := "5763719"
     else if (statusUpper = "WARNING")
-        embedColor := "16776960"       ; yellow
+        embedColor := "16776960"
     else if (statusUpper = "DENIED" || statusUpper = "ERROR")
-        embedColor := "15548997"       ; red
+        embedColor := "15548997"
     else
-        embedColor := "3447003"        ; blue default
+        embedColor := "3447003"
 
-    ; -------------------------
-    ; JSON TEMPLATE (ASCII ONLY)
-    ; -------------------------
     embed =
     (
 {
   "embeds":[
     {
-      "title":"__TITLE__",
+      "title":"MER BO7 LOADER DASHBOARD",
       "color":__COLOR__,
       "fields":[
-        { "name":"__USER_FIELD__",   "value":"__USER__",   "inline":true },
-        { "name":"__KEY_FIELD__",    "value":"__KEY__",    "inline":true },
-        { "name":"__HWID_FIELD__",   "value":"__HWID__",   "inline":false },
-        { "name":"__STATUS_FIELD__", "value":"__STATUS__", "inline":true },
-        { "name":"__EVENT_FIELD__",  "value":"__EVENT__",  "inline":true },
-        { "name":"__LAST_FIELD__",   "value":"__LAST__",   "inline":false },
-        { "name":"__IP_FIELD__",     "value":"__IPINFO__", "inline":false },
-        { "name":"__ACTIVE_FIELD__", "value":"__KEYS__",   "inline":false }
+        { "name":"User",        "value":"__USER__",   "inline":true },
+        { "name":"Key",         "value":"__KEY__",    "inline":true },
+        { "name":"Status",      "value":"__STATUS__", "inline":true },
+        { "name":"Event",       "value":"__EVENT__",  "inline":true },
+        { "name":"Last Online", "value":"__LAST__",   "inline":false },
+        { "name":"IP Details",  "value":"__IP__",     "inline":false },
+        { "name":"Active Keys", "value":"__KEYS__",   "inline":false }
       ],
       "footer":{ "text":"Updated: __TS__ UTC" },
       "timestamp":"__TS__Z"
@@ -212,54 +170,19 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
 }
     )
 
-    ; -----------------------------
-    ; Emoji labels + formatting
-    ; -----------------------------
-    titleEmoji  := " M E R  B O 7  L O A D E R "
-    userField   := " USER"
-    keyField    := " KEY"
-    hwidField   := " HWID"
-    statusField := " STATUS"
-    eventField  := " EVENT"
-    lastField   := " LAST ONLINE"
-    ipField     := " IP / LOCATION"
-    activeField := " ACTIVE KEYS"
+    StringReplace, embed, embed, __COLOR__,  %embedColor%, All
+    StringReplace, embed, embed, __USER__,   %user%,      All
+    StringReplace, embed, embed, __KEY__,    %key%,       All
+    StringReplace, embed, embed, __STATUS__, %status%,    All
+    StringReplace, embed, embed, __EVENT__,  %event%,     All
+    StringReplace, embed, embed, __LAST__,   %lastText%,  All
+    StringReplace, embed, embed, __IP__,     %ipEsc%,     All
+    StringReplace, embed, embed, __KEYS__,   %keysEsc%,   All
+    StringReplace, embed, embed, __TS__,     %tsUTC%,     All
 
-    replUser   := "**" . user . "**"
-    replStatus := (status = "" ? "—" : "**" . status . "**")
-    replEvent  := (event  = "" ? "—" : "**" . event  . "**")
-
-    ; -----------------------------
-    ; Replace placeholders
-    ; -----------------------------
-    StringReplace, embed, embed, __TITLE__,        %titleEmoji%,   All
-    StringReplace, embed, embed, __COLOR__,        %embedColor%,   All
-    StringReplace, embed, embed, __USER_FIELD__,   %userField%,    All
-    StringReplace, embed, embed, __KEY_FIELD__,    %keyField%,     All
-    StringReplace, embed, embed, __HWID_FIELD__,   %hwidField%,    All
-    StringReplace, embed, embed, __STATUS_FIELD__, %statusField%,  All
-    StringReplace, embed, embed, __EVENT_FIELD__,  %eventField%,   All
-    StringReplace, embed, embed, __LAST_FIELD__,   %lastField%,    All
-    StringReplace, embed, embed, __IP_FIELD__,     %ipField%,      All
-    StringReplace, embed, embed, __ACTIVE_FIELD__, %activeField%,  All
-
-    StringReplace, embed, embed, __USER__,   %replUser%,   All
-    StringReplace, embed, embed, __KEY__,    %key%,        All
-    StringReplace, embed, embed, __HWID__,   %hwid%,       All
-    StringReplace, embed, embed, __STATUS__, %replStatus%, All
-    StringReplace, embed, embed, __EVENT__,  %replEvent%,  All
-    StringReplace, embed, embed, __LAST__,   %lastText%,   All
-    StringReplace, embed, embed, __IPINFO__, %ipEsc%,      All
-    StringReplace, embed, embed, __KEYS__,   %keysEsc%,    All
-    StringReplace, embed, embed, __TS__,     %tsUTC%,      All
-
-    ; -------------------------
-    ; PATCH existing dashboard
-    ; -------------------------
     if FileExist(DashboardFile) {
         FileRead, msgid, %DashboardFile%
         msgid := Trim(msgid)
-
         if (msgid != "") {
             url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN "/messages/" msgid
             wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
@@ -271,9 +194,6 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
         }
     }
 
-    ; -------------------------
-    ; POST new message
-    ; -------------------------
     url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     wh.Open("POST", url, false)
@@ -290,15 +210,18 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
 
 OnScriptExit(reason, code) {
     global username, licenseKey
-    SendWebhook("Loader exit", username, licenseKey, "OFF")
+    SendWebhook("Script Exit", username, licenseKey, "OFF")
 }
 
 ; ==========================================================
-; STARTUP FLOW
+; STARTUP LOGIC
 ; ==========================================================
 
 if !FileExist(ConfigDir)
     FileCreateDir, %ConfigDir%
+
+if !FileExist(UsedKeysFile)
+    FileAppend,, %UsedKeysFile%
 
 OnExit("OnScriptExit")
 LoadRemoteKeys()
@@ -325,7 +248,7 @@ if (Registered != 1 || SavedUser = "") {
 Return
 
 ; ==========================================================
-; GUIS
+; GUI: REGISTRATION
 ; ==========================================================
 
 ShowRegisterGui:
@@ -350,7 +273,7 @@ Return
 RegisterUser:
     Gui, Submit
     if (GuiUsername = "" || GuiKey = "") {
-        MsgBox, 48, Missing, Fill all fields.
+        MsgBox, 48, Missing Info, Fill all fields.
         Return
     }
 
@@ -358,8 +281,8 @@ RegisterUser:
     status := GetKeyStatus(GuiKey, ActiveKeyExpires)
 
     if (status != "valid") {
-        MsgBox, 48, Invalid, Invalid or expired key.
-        SendWebhook("Invalid key on registration", GuiUsername, GuiKey, "DENIED")
+        MsgBox, 48, Invalid Key, Invalid or expired key.
+        SendWebhook("Invalid registration attempt", GuiUsername, GuiKey, "DENIED")
         Return
     }
 
@@ -379,6 +302,10 @@ RegisterUser:
     Gosub, AfterLogin
 Return
 
+; ==========================================================
+; GUI: NEW KEY PROMPT
+; ==========================================================
+
 ShowNewKeyGui:
     Gui, New, +AlwaysOnTop +ToolWindow -SysMenu, Key Needed
     Gui, Color, 111111
@@ -390,7 +317,7 @@ ShowNewKeyGui:
 
     Gui, Add, Edit, x10 y90  w260 vGuiNewKey Password
     Gui, Add, Button, x10  y130 w120 h30 gSubmitNewKey, Activate
-    Gui, Add, Button, x150 y130 w120 h30 gExitAppBtn,   Exit
+    Gui, Add, Button, x150 y130 w120 h30 gExitAppBtn, Exit
     Gui, Show
 Return
 
@@ -405,7 +332,7 @@ SubmitNewKey:
     status := GetKeyStatus(GuiNewKey, ActiveKeyExpires)
 
     if (status != "valid") {
-        MsgBox, 48, Invalid, Invalid or expired key.
+        MsgBox, 48, Invalid Key, Key invalid or expired.
         SendWebhook("Invalid key renewal", username, GuiNewKey, "DENIED")
         Return
     }
@@ -427,7 +354,7 @@ Return
 ; ==========================================================
 
 AfterLogin:
-    SendWebhook("Script started", username, licenseKey, "ON")
+    SendWebhook("Script launched", username, licenseKey, "ON")
 
     tempFile := A_Temp "\Bo7_remote.ahk"
     urlMain  := MainScriptURL . "?cache=" . A_TickCount
@@ -435,7 +362,7 @@ AfterLogin:
 
     if (ErrorLevel) {
         MsgBox, 16, Error, Failed to download main script.
-        SendWebhook("Download failed", username, licenseKey, "ERROR")
+        SendWebhook("Download failure", username, licenseKey, "ERROR")
         Return
     }
 
@@ -443,8 +370,9 @@ AfterLogin:
 Return
 
 ; ==========================================================
-; EXIT BUTTON
+; EXIT HANDLER
 ; ==========================================================
+
 ExitAppBtn:
     ExitApp
 Return
