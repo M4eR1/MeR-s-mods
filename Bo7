@@ -1,0 +1,264 @@
+; AutoHotkey Script - Bo7 Mod Menu by MeR (Clean Black/Orange Version)
+
+#NoEnv
+#NoTrayIcon
+#SingleInstance, Force
+#Persistent
+#InstallKeybdHook
+#UseHook
+#KeyHistory, 0
+#HotKeyInterval 1
+#MaxHotkeysPerInterval 127
+
+CoordMode, Pixel, Screen, RGB
+CoordMode, Mouse, Screen
+SetBatchLines, -1
+PID := DllCall("GetCurrentProcessId")
+Process, Priority, %PID%, High
+
+; ---------------- GUI -----------------
+
+Gui, +ToolWindow -Caption +E0x08000000 +LastFound +AlwaysOnTop
+Gui, Color, 111111
+Gui, Font, s10 cFFA500, Segoe UI Semibold
+Gui, Margin, 10, 10
+
+; Invisible drag area
+Gui, Add, Text, x0 y0 w260 h20 vDragHandle gGuiMove BackgroundTrans
+
+; ===== TITLE =====
+Gui, Add, Text, x0 y5 w260 h30 Center BackgroundTrans cFFA500, Bo7 Mod Menu - By MeR
+
+; ===== MODES =====
+Gui, Add, Text, x0 y+10 w260 Center cFFA500, Modes
+Gui, Add, CheckBox, x10 y+5 vRifleCheckbox gRifleToggle, Rifle
+Gui, Add, CheckBox, x10 y+5 vSniperCheckbox gSniperToggle, Sniper
+Gui, Add, CheckBox, x10 y+5 vEnablePredictionCheckbox, Enable Prediction
+
+; ===== TARGET LOCATION =====
+Gui, Add, Text, x0 y+12 w260 Center cFFA500, Target Location
+Gui, Add, Button, x10 y+5 w75 h26 gHeadshotsButton, Head
+Gui, Add, Button, x+10 w75 h26 gChestButton, Chest
+Gui, Add, Button, x+10 w75 h26 gZombieButton, Zombie
+Gui, Add, Button, x10 y+10 w75 h26 gCampaignButton, Campaign
+
+; ===== AIM STRENGTH =====
+Gui, Add, Text, x0 y+15 w260 Center cFFA500, Aim Strength
+Gui, Add, Slider, x10 y+5 vStrengthSlider gStrengthChanged Range1-3 w240 TickInterval1, 1
+
+; ===== OTHER =====
+Gui, Add, Text, x0 y+20 w260 Center cFFA500, Other
+Gui, Add, CheckBox, x10 y+5 vAutoMarkToggle, Auto Mark (MB1+MB2 → P)
+
+; ===== VERSION LABEL =====
+Gui, Add, Text, x0 y+20 w260 Center BackgroundTrans c808080, V1
+
+; ===== CLOSE BUTTON =====
+Gui, Add, Button, x10 y+20 w60 h28 gClose, Close
+
+Gui, Show, AutoSize, Bo7 Mod Menu — By MeR
+GuiVisible := true
+AnimateGuiIn()
+
+; ---------------- VARIABLES -----------------
+
+EMCol := 0xEEFF00
+ColVn := 30
+
+ZeroX := A_ScreenWidth / 2
+ZeroY := A_ScreenHeight / 2.10
+
+CFovX := 70
+CFovY := 70
+SearchArea := 30
+
+prevX := 0
+prevY := 0
+lastTime := 0
+predictionMultiplier := 2.5
+strength := 0.11
+lastAutoMarkTime := 0
+
+; ---------------- AIMBOT LOOP -----------------
+
+Loop {
+
+    GuiControlGet, EnablePrediction,, EnablePredictionCheckbox
+    GuiControlGet, RifleEnabled,, RifleCheckbox
+    GuiControlGet, SniperEnabled,, SniperCheckbox
+    GuiControlGet, AutoMarkActive,, AutoMarkToggle
+
+    ; Auto Mark
+    if (AutoMarkActive && GetKeyState("LButton","P") && GetKeyState("RButton","P")) {
+        now := A_TickCount
+        if (now - lastAutoMarkTime >= 2000 || lastAutoMarkTime = 0) {
+            Send, p
+            lastAutoMarkTime := now
+        }
+    } else lastAutoMarkTime := 0
+
+    ; Mode Active Check
+    if ((RifleEnabled && GetKeyState("LButton","P") && GetKeyState("RButton","P"))
+     || (SniperEnabled && GetKeyState("RButton","P")))
+        ModeActive := true
+    else
+        ModeActive := false
+
+    if (!ModeActive) {
+        Sleep, 10
+        continue
+    }
+
+    targetFound := False
+
+    PixelSearch, AimPixelX, AimPixelY, targetX - SearchArea, targetY - SearchArea
+    , targetX + SearchArea, targetY + SearchArea, EMCol, ColVn, Fast RGB
+
+    if (!ErrorLevel) {
+        targetX := AimPixelX
+        targetY := AimPixelY
+        targetFound := True
+    } else {
+        ScanL := ZeroX - CFovX
+        ScanT := ZeroY - CFovY
+        ScanR := ZeroX + CFovX
+        ScanB := ZeroY + CFovY
+        PixelSearch, AimPixelX, AimPixelY, ScanL, ScanT, ScanR, ScanB, EMCol, ColVn, Fast RGB
+
+        if (!ErrorLevel) {
+            targetX := AimPixelX
+            targetY := AimPixelY
+            targetFound := True
+        }
+    }
+
+    if (targetFound) {
+
+        currentTime := A_TickCount
+        if (lastTime != 0) {
+            deltaTime := (currentTime - lastTime) / 1000.0
+            velocityX := (targetX - prevX) / deltaTime
+            velocityY := (targetY - prevY) / deltaTime
+        }
+        prevX := targetX
+        prevY := targetY
+        lastTime := currentTime
+
+        if (EnablePrediction && deltaTime != 0) {
+            PredictedX := targetX + Round(velocityX * predictionMultiplier * deltaTime)
+            PredictedY := targetY + Round(velocityY * predictionMultiplier * deltaTime)
+        } else {
+            PredictedX := targetX
+            PredictedY := targetY
+        }
+
+        AimX := PredictedX - ZeroX
+        AimY := PredictedY - ZeroY
+
+        DllCall("mouse_event", uint,1, int,Round(AimX * strength), int,Round(AimY * strength), uint,0, int,0)
+    }
+
+    Sleep, 10
+}
+
+; ------------------- HANDLERS -------------------
+
+StrengthChanged:
+    GuiControlGet, s,, StrengthSlider
+
+    if (s = 1) {
+        strength := 0.11
+        Tooltip, Aim Assist
+    }
+    else if (s = 2) {
+        strength := 0.20
+        Tooltip, Strong Aim Assist
+    }
+    else if (s = 3) {
+        strength := 0.35
+        Tooltip, Aimbot
+    }
+
+    SetTimer, RemoveTip, -700
+Return
+
+RemoveTip:
+Tooltip
+Return
+
+HeadshotsButton:
+    ZeroX := A_ScreenWidth / 2
+    ZeroY := A_ScreenHeight / 2.11
+    SoundBeep, 1000
+Return
+
+ChestButton:
+    ZeroX := A_ScreenWidth / 2
+    ZeroY := A_ScreenHeight / 2.15
+    SoundBeep, 800
+Return
+
+ZombieButton:
+    ZeroX := (A_ScreenWidth / 2) - 60
+    ZeroY := (A_ScreenHeight / 2.15) - 20
+    SoundBeep, 600
+Return
+
+CampaignButton:
+    ZeroX := (A_ScreenWidth / 2) - 60
+    ZeroY := (A_ScreenHeight / 2.15) - 5
+    SoundBeep, 600
+Return
+
+RifleToggle:
+    GuiControlGet, RifleState,, RifleCheckbox
+    if (RifleState)
+        GuiControl,, SniperCheckbox, 0
+Return
+
+SniperToggle:
+    GuiControlGet, SniperState,, SniperCheckbox
+    if (SniperState)
+        GuiControl,, RifleCheckbox, 0
+Return
+
+Close:
+GuiClose:
+    ExitApp
+Return
+
+; ===== Toggle GUI (RIGHT CTRL) =====
+~RControl::
+if (GuiVisible) {
+    AnimateGuiOut()
+    Gui, Hide
+    GuiVisible := false
+} else {
+    Gui, Show, NoActivate
+    AnimateGuiIn()
+    GuiVisible := true
+}
+return
+
+GuiMove:
+~LButton::
+    MouseGetPos,,, WinID, Control
+    if (Control = "DragHandle")
+        PostMessage, 0xA1, 2,,, A
+Return
+
+AnimateGuiIn() {
+    Loop 10 {
+        alpha := A_Index * 22
+        WinSet, Transparent, %alpha%
+        Sleep 15
+    }
+}
+
+AnimateGuiOut() {
+    Loop 10 {
+        alpha := 220 - (A_Index * 22)
+        WinSet, Transparent, %alpha%
+        Sleep 15
+    }
+}
