@@ -1,0 +1,369 @@
+; ============================================
+; MeR Bo7 Loader
+; - First-time username + key
+; - Keys hosted on GitHub
+; - Key expiry
+; - 1 PC per key via HWID
+; - Discord webhook logs (status/warnings)
+; - Orange/black theme
+; ============================================
+
+#NoEnv
+#SingleInstance, Force
+#Persistent
+#NoTrayIcon
+SetBatchLines, -1
+
+; ========= SETTINGS =========
+
+; 🔗 Webhook URL (your link)
+WebhookURL := "https://discord.com/api/webhooks/1439780147606847651/TwUrdBrJJ68SAaqvRfxv8nn0q86wK77_HVD52mr42JyM7MisBottKawyMnq-MM5Nz2us"
+
+; 🔗 Main Bo7 script (GitHub RAW)
+MainScriptURL := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Bo7"
+
+; 🔗 Keys file on GitHub (KEY|EXPIRY)
+KeysURL := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Keys%20Bo7"
+
+; 🔧 Config storage
+ConfigDir   := A_AppData "\MeR_Bo7"
+ConfigFile  := ConfigDir "\config.ini"
+KeyLockFile := ConfigDir "\keys_lock.ini"
+
+global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
+
+; ========= FUNCTIONS =========
+
+GetHWID() {
+    ; Simple HWID using system UUID
+    RunWait, %ComSpec% /c wmic csproduct get uuid > "%A_Temp%\uuid.txt",, Hide
+    FileRead, uuid, %A_Temp%\uuid.txt
+    return Trim(StrReplace(uuid, "UUID"))
+}
+
+LoadRemoteKeys() {
+    global KeysURL, KeyDB
+    KeyDB := []
+
+    temp := A_Temp "\Bo7_keys_remote.txt"
+    UrlDownloadToFile, %KeysURL%, %temp%
+    if (ErrorLevel) {
+        MsgBox, 16, Keys Error, Failed to download keys file from GitHub.`nCheck KeysURL or your connection.
+        return false
+    }
+
+    FileRead, contents, %temp%
+    if (ErrorLevel) {
+        MsgBox, 16, Keys Error, Failed to read downloaded keys file.
+        return false
+    }
+
+    Loop, Parse, contents, `n, `r
+    {
+        line := Trim(A_LoopField)
+        if (line = "" || SubStr(line,1,1) = ";")
+            continue
+
+        StringSplit, part, line, |
+        key := Trim(part1)
+        exp := Trim(part2)
+
+        if (key != "")
+            KeyDB.Push({key: key, expires: exp})
+    }
+    return true
+}
+
+GetKeyStatus(thisKey, ByRef expOut := "") {
+    global KeyDB
+    expOut := ""
+    today := SubStr(A_Now, 1, 8) ; YYYYMMDD
+
+    for i, obj in KeyDB {
+        if (obj.key = thisKey) {
+            exp := obj.expires
+            expOut := exp
+            if (exp = "" || exp = "0" || today <= exp)
+                return "valid"
+            else
+                return "expired"
+        }
+    }
+    return "unknown"
+}
+
+CheckKeyOwnership(key, username) {
+    ; 1 device per key via HWID
+    global KeyLockFile
+
+    hwid := GetHWID()
+
+    IniRead, SavedHWID, %KeyLockFile%, %key%, UsedByHWID,
+    IniRead, SavedUser, %KeyLockFile%, %key%, UsedByUser,
+
+    ; First time this key is used anywhere → bind to this HWID
+    if (SavedHWID = "" && SavedUser = "") {
+        IniWrite, %hwid%,    %KeyLockFile%, %key%, UsedByHWID
+        IniWrite, %username%, %KeyLockFile%, %key%, UsedByUser
+        return "ok"
+    }
+
+    ; Same PC & user → allowed
+    if (SavedHWID = hwid) {
+        return "ok"
+    }
+
+    ; Different PC using same key → warn & log, but don't exit loader
+    SendWebhook("Key already used on another device", username, key, "KEY_IN_USE", SavedUser, SavedHWID, hwid)
+
+    MsgBox, 48, Key In Use, This key is already linked to another device.`nYou cannot use it on this PC.`nPlease contact MeR for support.
+    return "denied"
+}
+
+GetActiveKeysSummary() {
+    ; Just list keys + expiry from remote list
+    global KeyDB
+    today := SubStr(A_Now, 1, 8)
+    text := ""
+
+    for i, obj in KeyDB {
+        exp := obj.expires
+        if (exp = "" || exp = "0")
+            expText := "lifetime"
+        else
+            expText := exp
+
+        text .= obj.key " (exp: " expText ")\n"
+    }
+
+    if (text = "")
+        text := "No keys in remote list."
+    return text
+}
+
+SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid := "") {
+    global WebhookURL
+
+    if (WebhookURL = "")
+        return
+
+    hwid := GetHWID()
+    activeList := GetActiveKeysSummary()
+
+    msg  := "**MeR Bo7 Loader — Dashboard Snapshot**`n"
+    msg .= "Event: " event "`n"
+    if (user != "")
+        msg .= "User: " user "`n"
+    if (key != "")
+        msg .= "Key: " key "`n"
+    msg .= "HWID: " hwid "`n"
+    if (status != "")
+        msg .= "Status: " status "`n"
+
+    if (owner != "")
+        msg .= "`nOriginal User: " owner "`n"
+
+    if (oldhwid != "" || newhwid != "")
+        msg .= "Original HWID: " oldhwid "`nNew HWID: " newhwid "`n"
+
+    msg .= "`nRemote Keys:`n" activeList
+
+    json := "{""content"":""" msg """}"
+    StringReplace, json, json, `n, \n, All
+
+    whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+    whr.Open("POST", WebhookURL, false)
+    whr.SetRequestHeader("Content-Type", "application/json")
+    whr.Send(json)
+}
+
+OnScriptExit(reason, code) {
+    global username, licenseKey
+    SendWebhook("Loader exit", username, licenseKey, "OFF")
+}
+
+; ========= STARTUP =========
+
+if !FileExist(ConfigDir)
+    FileCreateDir, %ConfigDir%
+
+OnExit("OnScriptExit")
+
+; load keys from GitHub
+LoadRemoteKeys()
+
+IniRead, Registered, %ConfigFile%, User, Registered, 0
+IniRead, SavedUser, %ConfigFile%, User, Username,
+IniRead, SavedKey,  %ConfigFile%, User, LicenseKey,
+
+if (Registered != 1 || SavedUser = "") {
+    ; First time: username + key
+    Gosub, ShowRegisterGui
+} else {
+    ; Returning user
+    username := SavedUser
+    licenseKey := SavedKey
+
+    status := GetKeyStatus(licenseKey, ActiveKeyExpires)
+
+    if (status = "valid") {
+        ; Check HWID binding
+        if (CheckKeyOwnership(licenseKey, username) = "ok") {
+            Gosub, AfterLogin
+        } else {
+            ; denied due to different PC
+            ; user can close app or you can later add a "Change key" button
+        }
+    } else if (status = "expired") {
+        NewKeyReason := "expired"
+        Gosub, ShowNewKeyGui
+    } else {
+        NewKeyReason := "invalid"
+        Gosub, ShowNewKeyGui
+    }
+}
+Return
+
+; ========= GUI: FIRST-TIME REGISTER =========
+
+ShowRegisterGui:
+    Gui, New, +AlwaysOnTop -Resize -MaximizeBox -MinimizeBox +OwnDialogs, MeR's Bo7 Loader
+    Gui, Color, 111111
+    Gui, Font, s10 cFFA500, Segoe UI Semibold
+    Gui, Margin, 15, 15
+
+    Gui, Add, Text, x0 y0 w280 Center cFFA500, MeR's Bo7 Loader
+    Gui, Add, Text, x0 y+10 w280 Center cFFFFFF, Create your account to use the script.
+
+    Gui, Add, Text, x10 y+20 cFFA500, Username:
+    Gui, Add, Edit, x10 y+5 w260 vGuiUsername
+
+    Gui, Add, Text, x10 y+15 cFFA500, License Key:
+    Gui, Add, Edit, x10 y+5 w260 vGuiKey Password
+
+    Gui, Add, Button, x10 y+20 w120 h28 gRegisterUser, Register & Launch
+    Gui, Add, Button, x+10 w120 h28 gExitAppBtn, Exit
+
+    Gui, Show, AutoSize Center
+Return
+
+RegisterUser:
+    Gui, Submit, NoHide
+
+    if (GuiUsername = "" || GuiKey = "") {
+        MsgBox, 48, Missing, Please fill in both username and key.
+        Return
+    }
+
+    ; reload keys (in case you updated GitHub)
+    LoadRemoteKeys()
+
+    status := GetKeyStatus(GuiKey, ActiveKeyExpires)
+    if (status != "valid") {
+        MsgBox, 48, Invalid, This key is invalid or expired.`nContact MeR for a valid key.
+        SendWebhook("Invalid or expired key on registration", GuiUsername, GuiKey, "DENIED")
+        Return
+    }
+
+    username   := GuiUsername
+    licenseKey := GuiKey
+
+    ; Check 1-device-per-key
+    if (CheckKeyOwnership(licenseKey, username) != "ok") {
+        ; Already linked to another device, don't proceed
+        Return
+    }
+
+    ; save config
+    IniWrite, 1,          %ConfigFile%, User, Registered
+    IniWrite, %username%, %ConfigFile%, User, Username
+    IniWrite, %licenseKey%, %ConfigFile%, User, LicenseKey
+
+    SendWebhook("New registration", username, licenseKey, "REGISTERED")
+
+    Gui, Destroy
+    Gosub, AfterLogin
+Return
+
+ExitAppBtn:
+    ExitApp
+Return
+
+; ========= GUI: NEW KEY AFTER EXPIRE / INVALID =========
+
+ShowNewKeyGui:
+    Gui, New, +AlwaysOnTop -Resize -MaximizeBox -MinimizeBox +OwnDialogs, Key Required
+    Gui, Color, 111111
+    Gui, Font, s10 cFFA500, Segoe UI Semibold
+    Gui, Margin, 15, 15
+
+    if (NewKeyReason = "expired") {
+        mainText := "Your current key has expired."
+        subText  := "Enter a new valid key to continue."
+    } else {
+        mainText := "Your current key is invalid or no longer active."
+        subText  := "Enter a new valid key to continue."
+    }
+
+    Gui, Add, Text, x0 y0 w280 Center cFFA500, %mainText%
+    Gui, Add, Text, x0 y+10 w280 Center cFFFFFF, %subText%
+
+    Gui, Add, Text, x10 y+20 cFFA500, New License Key:
+    Gui, Add, Edit, x10 y+5 w260 vGuiNewKey Password
+
+    Gui, Add, Button, x10 y+20 w120 h28 gSubmitNewKey, Activate Key
+    Gui, Add, Button, x+10 w120 h28 gExitAppBtn, Exit
+
+    Gui, Show, AutoSize Center
+Return
+
+SubmitNewKey:
+    Gui, Submit, NoHide
+
+    if (GuiNewKey = "") {
+        MsgBox, 48, Missing, Please enter a new key.
+        Return
+    }
+
+    LoadRemoteKeys()
+    status := GetKeyStatus(GuiNewKey, ActiveKeyExpires)
+    if (status != "valid") {
+        MsgBox, 48, Invalid, This key is invalid or expired.`nContact MeR.
+        SendWebhook("Invalid or expired key on renewal", username, GuiNewKey, "DENIED")
+        Return
+    }
+
+    licenseKey := GuiNewKey
+
+    ; Check HWID binding
+    if (CheckKeyOwnership(licenseKey, username) != "ok") {
+        Return
+    }
+
+    ; Save new key
+    IniWrite, %licenseKey%, %ConfigFile%, User, LicenseKey
+
+    SendWebhook("Key renewed", username, licenseKey, "RENEWED")
+
+    Gui, Destroy
+    Gosub, AfterLogin
+Return
+
+; ========= AFTER LOGIN =========
+
+AfterLogin:
+    ; Start main script from GitHub
+    LoadRemoteKeys() ; refresh in case you updated
+    SendWebhook("Script started", username, licenseKey, "ON")
+
+    tempFile := A_Temp "\Bo7_remote.ahk"
+    UrlDownloadToFile, %MainScriptURL%, %tempFile%
+
+    if (ErrorLevel) {
+        MsgBox, 16, Error, Failed to download main Bo7 script from GitHub.`nCheck the URL or connection.
+        SendWebhook("Download failed", username, licenseKey, "ERROR")
+        Return
+    }
+
+    Run, %tempFile%
+Return
