@@ -1,6 +1,9 @@
 ; ==========================================================
 ; MeR Bo7 Loader — Single-Use Keys / No Emojis / No HWID
 ; GitHub Keys, Expiration, Dashboard, IP Logging, Last Online
+; Key is bound to USERNAME (case-insensitive) with rules:
+; - Username >= 3 chars
+; - No two users can share same username
 ; ==========================================================
 
 #NoEnv
@@ -65,23 +68,68 @@ GetKeyStatus(thisKey, ByRef expOut := "") {
     return "unknown"
 }
 
+; --------------------------
+; USERNAME VALIDATION
+; --------------------------
+ValidateUsername(name) {
+    if (StrLen(name) < 3)
+        return "short"
+    Lower := StrLower(name)
+    return Lower
+}
+
 ; ==========================================================
-; SINGLE-USE KEY SYSTEM
+; KEY ↔ USER BINDING SYSTEM
+; ==========================================================
+; Rules:
+; - First time a key is used, it binds to that username
+; - Username is case-insensitive (stored as LowerUser)
+; - No duplicate usernames (global list in USER_LIST)
+; - Same username can reuse same key unlimited times
 ; ==========================================================
 
 CheckKeyOwnership(key, username) {
     global UsedKeysFile
 
-    IniRead, UsedFlag, %UsedKeysFile%, %key%, Used, 0
+    ; Normalize username (case-insensitive)
+    LowerUser := StrLower(username)
 
-    if (UsedFlag = 1) {
-        MsgBox, 48, Key Used, This key has already been used once. Each key can only be activated a single time.
-        SendWebhook("Key already used before", username, key, "DENIED")
-        return "denied"
+    ; Read stored binding for this key
+    IniRead, StoredUser,   %UsedKeysFile%, %key%, User,
+    IniRead, StoredLower,  %UsedKeysFile%, %key%, LowerUser,
+    IniRead, UserExists,   %UsedKeysFile%, USER_LIST, %LowerUser%, 0
+
+    ; -----------------------------
+    ; FIRST TIME THIS KEY IS USED
+    ; -----------------------------
+    if (StoredUser = "") {
+        ; If username already taken by some other key → block
+        if (UserExists = 1) {
+            MsgBox, 48, Username Exists, This username is already used by another user. Please choose a different username.
+            return "denied"
+        }
+
+        ; Bind key to this username and mark username as taken
+        IniWrite, %username%,  %UsedKeysFile%, %key%, User
+        IniWrite, %LowerUser%, %UsedKeysFile%, %key%, LowerUser
+        IniWrite, 1,           %UsedKeysFile%, USER_LIST, %LowerUser%
+        return "ok"
     }
 
-    IniWrite, 1, %UsedKeysFile%, %key%, Used
-    return "ok"
+    ; -----------------------------
+    ; KEY ALREADY BOUND TO A USER
+    ; -----------------------------
+    if (StrLower(StoredLower) = LowerUser) {
+        ; Same user (case-insensitive) → allow unlimited usage
+        return "ok"
+    }
+
+    ; -----------------------------
+    ; WRONG USER TRYING TO USE KEY
+    ; -----------------------------
+    MsgBox, 48, Key Locked, This key is already registered to user: %StoredUser%.
+    SendWebhook("Wrong user tried to use key", username, key, "DENIED")
+    return "denied"
 }
 
 ; ==========================================================
@@ -122,7 +170,6 @@ GetActiveKeysSummary() {
     if (licenseKey = "")
         return "No active key on this device."
 
-    ; Format expiry nicely
     if (ActiveKeyExpires = "" || ActiveKeyExpires = "0") {
         expText := "No expiry (lifetime)"
     } else if (StrLen(ActiveKeyExpires) = 8) {
@@ -278,8 +325,8 @@ ShowRegisterGui:
     Gui, Color, 111111
     Gui, Font, s10 cFFA500
 
-    Gui, Add, Text, x0 y10 w280 Center cFFA500, MeR's Bo7 Loader
-    Gui, Add, Text, x0 y40 w280 Center cFFFFFF, Create your account
+    Gui, Add, Text, x0 y10  w280 Center cFFA500, MeR's Bo7 Loader
+    Gui, Add, Text, x0 y40  w280 Center cFFFFFF, Create your account
 
     Gui, Add, Text, x10 y80 cFFA500, Username:
     Gui, Add, Edit, x10 y100 w260 vGuiUsername
@@ -299,6 +346,15 @@ RegisterUser:
         Return
     }
 
+    ; -------------------------
+    ; Validate username rules
+    ; -------------------------
+    lower := ValidateUsername(GuiUsername)
+    if (lower = "short") {
+        MsgBox, 48, Invalid Username, Username must be at least 3 characters.
+        return
+    }
+
     LoadRemoteKeys()
     status := GetKeyStatus(GuiKey, ActiveKeyExpires)
 
@@ -311,6 +367,10 @@ RegisterUser:
     username   := GuiUsername
     licenseKey := GuiKey
 
+    ; This will:
+    ; - Bind key to username if first time
+    ; - Ensure username isn't already used by someone else
+    ; - Allow reuse if same username
     if (CheckKeyOwnership(licenseKey, username) != "ok")
         Return
 
@@ -361,6 +421,7 @@ SubmitNewKey:
 
     licenseKey := GuiNewKey
 
+    ; Re-validate ownership / username binding for new key
     if (CheckKeyOwnership(licenseKey, username) != "ok")
         Return
 
