@@ -1,5 +1,6 @@
 ; ==========================================================
 ; MeR Bo7 Loader — Username-Bound Licensing (AHK v1 Clean)
+; Now includes: *Key Refresh Fix* (Deletes old key file before downloading new ones)
 ; ==========================================================
 
 #NoEnv
@@ -32,16 +33,22 @@ ValidateUsername(name) {
 }
 
 ; ==========================================================
-; LOAD REMOTE KEYS (AHK v1 SAFE)
+; LOAD REMOTE KEYS — WITH CACHE DELETE FIX
 ; ==========================================================
 LoadRemoteKeys() {
     global KeysURL, KeyDB
-    KeyDB := []   ; create new array
+    KeyDB := []
 
     temp := A_Temp "\Bo7_keys_remote.txt"
     url  := KeysURL . "?cache=" . A_TickCount
 
+    ; --- FIX: ALWAYS DELETE OLD KEY FILE ---
+    if FileExist(temp)
+        FileDelete, %temp%
+
+    ; Download new keys every time
     UrlDownloadToFile, %url%, %temp%
+
     FileRead, contents, %temp%
 
     Loop, Parse, contents, `n, `r
@@ -68,7 +75,7 @@ GetKeyStatus(k, ByRef out := "") {
     out := ""
     today := SubStr(A_Now, 1, 8)
 
-    for index, obj in KeyDB {
+    for i, obj in KeyDB {
         if (obj.key = k) {
             out := obj.expires
             if (out = "" || out = "0" || today <= out)
@@ -80,18 +87,18 @@ GetKeyStatus(k, ByRef out := "") {
 }
 
 ; ==========================================================
-; KEY-USERNAME BINDING
+; KEY ↔ USERNAME BINDING
 ; ==========================================================
 CheckKeyOwnership(key, username) {
     global UsedKeysFile
 
-    StringLower, LowerUser, username ; convert to lowercase
+    StringLower, LowerUser, username
 
     IniRead, StoredUser,  %UsedKeysFile%, %key%, User,
     IniRead, StoredLower, %UsedKeysFile%, %key%, LowerUser,
     IniRead, UserExists,  %UsedKeysFile%, USER_LIST, %LowerUser%, 0
 
-    ; First time key is used
+    ; First time activation
     if (StoredUser = "") {
         if (UserExists = 1) {
             MsgBox, 48, Username Taken, This username is already used by another user.
@@ -104,10 +111,11 @@ CheckKeyOwnership(key, username) {
         return "ok"
     }
 
-    ; Key already belongs to someone
+    ; Already bound → check owner
     StringLower, StoredLowerFix, StoredLower
+
     if (StoredLowerFix = LowerUser)
-        return "ok"   ; same user → allow access
+        return "ok"
 
     MsgBox, 48, Locked, This key belongs to:`n%StoredUser%.
     return "denied"
@@ -148,7 +156,7 @@ GetActiveKeysSummary() {
 }
 
 ; ==========================================================
-; WEBHOOK
+; WEBHOOK SYSTEM
 ; ==========================================================
 SendWebhook(event, user, key, status := "") {
     global DashboardFile, WebhookURL
@@ -223,7 +231,7 @@ OnScriptExit(reason, code) {
 }
 
 ; ==========================================================
-; STARTUP LOGIC
+; STARTUP
 ; ==========================================================
 if !FileExist(ConfigDir)
     FileCreateDir, %ConfigDir%
@@ -257,7 +265,7 @@ if (Registered != 1 or SavedUser = "") {
 Return
 
 ; ==========================================================
-; GUI — REGISTRATION
+; REGISTRATION GUI
 ; ==========================================================
 ShowRegisterGui:
     Gui, New, +AlwaysOnTop -SysMenu +ToolWindow, MeR Loader
@@ -265,7 +273,7 @@ ShowRegisterGui:
     Gui, Font, s10 cFFA500
 
     Gui, Add, Text, x0 y10 w280 Center cFFA500, MeR's Bo7 Loader
-    Gui, Add, Text, x0 y40 w280 Center cFFFFFF, Create your account
+    Gui, Add, Text, x0 y40 w280 Center cFFFFFF, Create Your Account
 
     Gui, Add, Text, x10 y80  cFFA500, Username:
     Gui, Add, Edit, x10 y100 w260 vGuiUsername
@@ -282,7 +290,7 @@ RegisterUser:
     Gui, Submit
 
     if (GuiUsername = "" or GuiKey = "") {
-        MsgBox, 48, Missing Info, Fill all fields.
+        MsgBox, 48, Missing Info, Fill in all fields.
         Return
     }
 
@@ -315,7 +323,7 @@ RegisterUser:
 Return
 
 ; ==========================================================
-; GUI — NEW KEY
+; NEW KEY GUI
 ; ==========================================================
 ShowNewKeyGui:
     Gui, New, +AlwaysOnTop -SysMenu +ToolWindow, Key Needed
@@ -324,7 +332,7 @@ ShowNewKeyGui:
 
     txt := (NewKeyReason = "expired") ? "Your key has expired." : "Your key is invalid."
     Gui, Add, Text, x0 y20 w280 Center cFFA500, %txt%
-    Gui, Add, Text, x0 y50 w280 Center cFFFFFF, Enter new key
+    Gui, Add, Text, x0 y50 w280 Center cFFFFFF, Enter new key:
 
     Gui, Add, Edit, x10 y90 w260 vGuiNewKey Password
     Gui, Add, Button, x10  y130 w120 h30 gSubmitNewKey, Activate
@@ -359,7 +367,7 @@ SubmitNewKey:
 Return
 
 ; ==========================================================
-; AFTER LOGIN → RUN MAIN SCRIPT
+; AFTER LOGIN
 ; ==========================================================
 AfterLogin:
     SendWebhook("Script launched", username, licenseKey, "ON")
