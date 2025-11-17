@@ -1,9 +1,5 @@
 ; ==========================================================
-; MeR Bo7 Loader — Username-Bound Keys (AHK v1 Compatible)
-; - Key binds permanently to username (case-insensitive)
-; - Username must be ≥ 3 chars
-; - No duplicate usernames
-; - Same user can reopen unlimited times
+; MeR Bo7 Loader — Username-Bound Keys (AHK v1 Clean Version)
 ; ==========================================================
 
 #NoEnv
@@ -25,11 +21,12 @@ DashboardFile := ConfigDir "\dashboard_id.txt"
 global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 
 ; ==========================================================
-; VALIDATE USERNAME (≥ 3 letters + return lowercase)
+; VALIDATE USERNAME (≥ 3 letters, return lowercase)
 ; ==========================================================
 ValidateUsername(name) {
     if (StrLen(name) < 3)
         return "short"
+
     StringLower, lower, name
     return lower
 }
@@ -46,32 +43,29 @@ LoadRemoteKeys() {
 
     UrlDownloadToFile, %url%, %temp%
     FileRead, contents, %temp%
-    if (ErrorLevel)
-        return false
 
     Loop, Parse, contents, `n, `r {
         line := Trim(A_LoopField)
         if (line = "" || SubStr(line,1,1)=";")
-            Continue
+            continue
 
         StringSplit, part, line, |
         KeyDB.Push({ key: Trim(part1), expires: Trim(part2) })
     }
-    return true
 }
 
 ; ==========================================================
 ; CHECK KEY STATUS
 ; ==========================================================
-GetKeyStatus(thisKey, ByRef expOut := "") {
+GetKeyStatus(k, ByRef out := "") {
     global KeyDB
-    expOut := ""
+    out := ""
     today := SubStr(A_Now, 1, 8)
 
     for i, obj in KeyDB {
-        if (obj.key = thisKey) {
-            expOut := obj.expires
-            if (expOut = "" || expOut = "0" || today <= expOut)
+        if (obj.key = k) {
+            out := obj.expires
+            if (out = "" || out = "0" || today <= out)
                 return "valid"
             return "expired"
         }
@@ -80,91 +74,80 @@ GetKeyStatus(thisKey, ByRef expOut := "") {
 }
 
 ; ==========================================================
-; KEY ↔ USERNAME BINDING (AUTOHOTKEY V1 COMPATIBLE)
+; KEY ↔ USERNAME BINDING (AHK v1 SAFE)
 ; ==========================================================
 CheckKeyOwnership(key, username) {
     global UsedKeysFile
 
-    ; Lowercase the username
+    ; Convert username to lowercase
     StringLower, LowerUser, username
 
-    IniRead, StoredUser,   %UsedKeysFile%, %key%, User,
-    IniRead, StoredLower,  %UsedKeysFile%, %key%, LowerUser,
-    IniRead, UserExists,   %UsedKeysFile%, USER_LIST, %LowerUser%, 0
+    ; Read stored data
+    IniRead, StoredUser,  %UsedKeysFile%, %key%, User,
+    IniRead, StoredLower, %UsedKeysFile%, %key%, LowerUser,
+    IniRead, UserExists,  %UsedKeysFile%, USER_LIST, %LowerUser%, 0
 
-    ; -----------------------------------------------------
-    ; FIRST TIME KEY IS USED
-    ; -----------------------------------------------------
+    ; -----------------------
+    ; First time key is used
+    ; -----------------------
     if (StoredUser = "") {
         if (UserExists = 1) {
-            MsgBox, 48, Username Used, This username is already taken by another user.`nChoose a different username.
+            MsgBox, 48, Username Taken, This username is already used by someone else.
             return "denied"
         }
 
-        ; Bind key ↔ username
         IniWrite, %username%,  %UsedKeysFile%, %key%, User
         IniWrite, %LowerUser%, %UsedKeysFile%, %key%, LowerUser
         IniWrite, 1,           %UsedKeysFile%, USER_LIST, %LowerUser%
         return "ok"
     }
 
-    ; -----------------------------------------------------
-    ; KEY ALREADY BOUND → CHECK IF SAME USER
-    ; -----------------------------------------------------
+    ; -----------------------
+    ; Key is already bound
+    ; -----------------------
     StringLower, StoredLowerFix, StoredLower
 
-    if (StoredLowerFix = LowerUser) {
-        return "ok"   ; same username → allow unlimited usage
-    }
+    if (StoredLowerFix = LowerUser)
+        return "ok" ; same user → allow unlimited usage
 
-    ; -----------------------------------------------------
-    ; WRONG USER
-    ; -----------------------------------------------------
-    MsgBox, 48, Key Locked, This key is bound to username:`n%StoredUser%.
+    MsgBox, 48, Key Locked, This key belongs to:`n%StoredUser%.
     return "denied"
 }
 
 ; ==========================================================
-; IP + GEO LOOKUP
+; IP INFO
 ; ==========================================================
 FetchIPInfo(ByRef ip:="", ByRef country:="", ByRef city:="", ByRef org:="") {
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     wh.Open("GET", "https://ipinfo.io/json", false)
     wh.Send()
-    if (wh.Status != 200)
-        return false
 
     resp := wh.ResponseText
-
-    RegExMatch(resp, """ip"":\s*""([^""]+)""", mIP)    , ip := mIP1
-    RegExMatch(resp, """country"":\s*""([^""]+)""", mC), country := mC1
-    RegExMatch(resp, """city"":\s*""([^""]+)""", mCity), city := mCity1
-    RegExMatch(resp, """org"":\s*""([^""]+)""", mO)    , org := mO1
-
-    return true
+    RegExMatch(resp, """ip"":\s*""([^""]+)""", m1), ip := m11
+    RegExMatch(resp, """country"":\s*""([^""]+)""", m2), country := m21
+    RegExMatch(resp, """city"":\s*""([^""]+)""", m3), city := m31
+    RegExMatch(resp, """org"":\s*""([^""]+)""", m4), org := m41
 }
 
 ; ==========================================================
-; ACTIVE KEY SUMMARY FOR EMBED
+; ACTIVE KEY SUMMARY
 ; ==========================================================
 GetActiveKeysSummary() {
     global licenseKey, ActiveKeyExpires
-
     if (licenseKey = "")
-        return "No active key."
+        return "None"
 
-    if (ActiveKeyExpires = "" || ActiveKeyExpires = "0")
-        expText := "Lifetime"
-    else if (StrLen(ActiveKeyExpires) = 8)
-        expText := SubStr(ActiveKeyExpires,1,4) "-" SubStr(ActiveKeyExpires,5,2) "-" SubStr(ActiveKeyExpires,7,2)
-    else
-        expText := ActiveKeyExpires
+    if (ActiveKeyExpires = "" or ActiveKeyExpires = "0") {
+        exp := "Lifetime"
+    } else if (StrLen(ActiveKeyExpires) = 8) {
+        exp := SubStr(ActiveKeyExpires,1,4) "-" SubStr(ActiveKeyExpires,5,2) "-" SubStr(ActiveKeyExpires,7,2)
+    } else exp := ActiveKeyExpires
 
-    return "Key: " licenseKey "`nExpires: " expText
+    return "Key: " licenseKey "`nExpires: " exp
 }
 
 ; ==========================================================
-; DISCORD WEBHOOK
+; WEBHOOK
 ; ==========================================================
 SendWebhook(event, user, key, status := "") {
     global DashboardFile, WebhookURL
@@ -178,95 +161,69 @@ SendWebhook(event, user, key, status := "") {
     ip := "", country := "", city := "", org := ""
     FetchIPInfo(ip, country, city, org)
 
-    ipBlock := "IP: " ip "\nCountry: " country "\nCity: " city "\nISP: " org
-    StringReplace, ipEsc, ipBlock, `n, \n, All
+    block := "IP: " ip "\nCountry: " country "\nCity: " city "\nISP: " org
+    StringReplace, blockEsc, block, `n, \n, All
 
-    FormatTime, tsUTC,, yyyy-MM-dd HH:mm:ss
-    FormatTime, localNow,, HH:mm
-    lastText := "Today at " localNow
+    FormatTime, t1,, yyyy-MM-dd HH:mm:ss
+    FormatTime, t2,, HH:mm
 
-    StringUpper, statusUpper, status
+    StringUpper, STAT, status
 
-    if (statusUpper = "REGISTERED" || statusUpper = "RENEWED" || statusUpper = "ON" || statusUpper = "OFF")
-        embedColor := "5763719"
-    else if (statusUpper = "WARNING")
-        embedColor := "16776960"
-    else if (statusUpper = "DENIED" || statusUpper = "ERROR")
-        embedColor := "15548997"
-    else
-        embedColor := "3447003"
+    embedColor := (STAT = "DENIED" or STAT = "ERROR") ? "15548997"
+                : (STAT = "WARNING") ? "16776960"
+                : "5763719"
 
     embed =
     (
 {
-  "embeds":[
-    {
-      "title":"MER BO7 LOADER DASHBOARD",
-      "color":__COLOR__,
-      "fields":[
-        { "name":"User",        "value":"__USER__",   "inline":true },
-        { "name":"Key",         "value":"__KEY__",    "inline":true },
-        { "name":"Status",      "value":"__STATUS__", "inline":true },
-        { "name":"Event",       "value":"__EVENT__",  "inline":true },
-        { "name":"Last Online", "value":"__LAST__",   "inline":false },
-        { "name":"IP Details",  "value":"__IP__",     "inline":false },
-        { "name":"Active Keys", "value":"__KEYS__",   "inline":false }
-      ],
-      "footer":{ "text":"Updated: __TS__ UTC" },
-      "timestamp":"__TS__Z"
-    }
-  ]
+ "embeds":[
+  {
+   "title":"MER BO7 LOADER DASHBOARD",
+   "color":__COLOR__,
+   "fields":[
+     {"name":"User","value":"__USER__","inline":true},
+     {"name":"Key","value":"__KEY__","inline":true},
+     {"name":"Status","value":"__STATUS__","inline":true},
+     {"name":"Event","value":"__EVENT__","inline":true},
+     {"name":"Last Online","value":"__LAST__","inline":false},
+     {"name":"IP Details","value":"__IP__","inline":false},
+     {"name":"Active Keys","value":"__KEYS__","inline":false}
+   ],
+   "footer":{"text":"Updated: __TS__ UTC"},
+   "timestamp":"__TS__Z"
+  }
+ ]
 }
     )
 
-    StringReplace, embed, embed, __COLOR__,  %embedColor%, All
-    StringReplace, embed, embed, __USER__,   %user%,      All
-    StringReplace, embed, embed, __KEY__,    %key%,       All
-    StringReplace, embed, embed, __STATUS__, %status%,    All
-    StringReplace, embed, embed, __EVENT__,  %event%,     All
-    StringReplace, embed, embed, __LAST__,   %lastText%,  All
-    StringReplace, embed, embed, __IP__,     %ipEsc%,     All
-    StringReplace, embed, embed, __KEYS__,   %keysEsc%,   All
-    StringReplace, embed, embed, __TS__,     %tsUTC%,     All
+    StringReplace, embed, embed, __COLOR__, %embedColor%, All
+    StringReplace, embed, embed, __USER__, %user%, All
+    StringReplace, embed, embed, __KEY__, %key%, All
+    StringReplace, embed, embed, __STATUS__, %status%, All
+    StringReplace, embed, embed, __EVENT__, %event%, All
+    StringReplace, embed, embed, __LAST__, %t2%, All
+    StringReplace, embed, embed, __IP__, %blockEsc%, All
+    StringReplace, embed, embed, __KEYS__, %keysEsc%, All
+    StringReplace, embed, embed, __TS__, %t1%, All
 
     url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
 
-    ; If dashboard file exists, PATCH old message
-    if FileExist(DashboardFile) {
-        FileRead, msgid, %DashboardFile%
-        msgid := Trim(msgid)
-        if (msgid != "") {
-            patchUrl := url "/messages/" msgid
-            wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            wh.Open("PATCH", patchUrl, false)
-            wh.SetRequestHeader("Content-Type","application/json")
-            wh.Send(embed)
-            if (wh.Status = 200)
-                return
-        }
-    }
-
-    ; Else POST new
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     wh.Open("POST", url, false)
     wh.SetRequestHeader("Content-Type","application/json")
     wh.Send(embed)
-
-    resp := wh.ResponseText
-    RegExMatch(resp, """id"":""([^""]+)""", m)
-    if (m1 != "") {
-        FileDelete, %DashboardFile%
-        FileAppend, %m1%, %DashboardFile%
-    }
 }
 
+; ==========================================================
+; EXIT WEBHOOK
+; ==========================================================
 OnScriptExit(reason, code) {
     global username, licenseKey
     SendWebhook("Script Exit", username, licenseKey, "OFF")
 }
 
 ; ==========================================================
-; STARTUP
+; STARTUP LOGIC
 ; ==========================================================
 if !FileExist(ConfigDir)
     FileCreateDir, %ConfigDir%
@@ -281,7 +238,7 @@ IniRead, Registered, %ConfigFile%, User, Registered, 0
 IniRead, SavedUser,  %ConfigFile%, User, Username,
 IniRead, SavedKey,   %ConfigFile%, User, LicenseKey,
 
-if (Registered != 1 || SavedUser = "") {
+if (Registered != 1 or SavedUser = "") {
     Gosub, ShowRegisterGui
 } else {
     username   := SavedUser
@@ -299,17 +256,17 @@ if (Registered != 1 || SavedUser = "") {
 Return
 
 ; ==========================================================
-; GUI: REGISTRATION
+; REGISTRATION GUI
 ; ==========================================================
 ShowRegisterGui:
-    Gui, New, +AlwaysOnTop +ToolWindow -SysMenu, MeR Loader
+    Gui, New, +AlwaysOnTop -SysMenu +ToolWindow, MeR Loader
     Gui, Color, 111111
     Gui, Font, s10 cFFA500
 
-    Gui, Add, Text, x0 y10  w280 Center cFFA500, MeR's Bo7 Loader
-    Gui, Add, Text, x0 y40  w280 Center cFFFFFF, Create your account
+    Gui, Add, Text, x0 y10 w280 Center cFFA500, MeR's Bo7 Loader
+    Gui, Add, Text, x0 y40 w280 Center cFFFFFF, Create your account
 
-    Gui, Add, Text, x10 y80 cFFA500, Username:
+    Gui, Add, Text, x10 y80  cFFA500, Username:
     Gui, Add, Edit, x10 y100 w260 vGuiUsername
 
     Gui, Add, Text, x10 y140 cFFA500, License Key:
@@ -322,24 +279,23 @@ Return
 
 RegisterUser:
     Gui, Submit
-    if (GuiUsername = "" || GuiKey = "") {
-        MsgBox, 48, Missing Info, Please fill all fields.
+
+    if (GuiUsername = "" or GuiKey = "") {
+        MsgBox, 48, Missing Info, Fill all fields.
         Return
     }
 
-    ; Validate username rules
     lower := ValidateUsername(GuiUsername)
     if (lower = "short") {
-        MsgBox, 48, Invalid Username, Username must be at least 3 characters.
-        return
+        MsgBox, 48, Invalid Username, Username must be 3+ characters.
+        Return
     }
 
     LoadRemoteKeys()
     status := GetKeyStatus(GuiKey, ActiveKeyExpires)
 
     if (status != "valid") {
-        MsgBox, 48, Invalid Key, Invalid or expired key.
-        SendWebhook("Invalid registration attempt", GuiUsername, GuiKey, "DENIED")
+        MsgBox, 48, Invalid Key, Invalid or expired.
         Return
     }
 
@@ -353,25 +309,23 @@ RegisterUser:
     IniWrite, %username%,   %ConfigFile%, User, Username
     IniWrite, %licenseKey%, %ConfigFile%, User, LicenseKey
 
-    SendWebhook("New registration", username, licenseKey, "REGISTERED")
-
     Gui, Destroy
     Gosub, AfterLogin
 Return
 
 ; ==========================================================
-; GUI: NEW KEY PROMPT
+; NEW KEY GUI
 ; ==========================================================
 ShowNewKeyGui:
-    Gui, New, +AlwaysOnTop +ToolWindow -SysMenu, Key Needed
+    Gui, New, +AlwaysOnTop -SysMenu +ToolWindow, Key Needed
     Gui, Color, 111111
     Gui, Font, s10 cFFA500
 
-    t := (NewKeyReason = "expired") ? "Your key has expired." : "Your key is invalid."
-    Gui, Add, Text, x0 y20 w280 Center cFFA500, %t%
+    label := (NewKeyReason = "expired") ? "Your key expired." : "Invalid key."
+    Gui, Add, Text, x0 y20 w280 Center cFFA500, %label%
     Gui, Add, Text, x0 y50 w280 Center cFFFFFF, Enter new key
 
-    Gui, Add, Edit, x10 y90  w260 vGuiNewKey Password
+    Gui, Add, Edit, x10 y90 w260 vGuiNewKey Password
     Gui, Add, Button, x10  y130 w120 h30 gSubmitNewKey, Activate
     Gui, Add, Button, x150 y130 w120 h30 gExitAppBtn, Exit
     Gui, Show
@@ -380,7 +334,7 @@ Return
 SubmitNewKey:
     Gui, Submit
     if (GuiNewKey = "") {
-        MsgBox, 48, Missing, Enter a key.
+        MsgBox, 48, Missing, Enter key.
         Return
     }
 
@@ -388,8 +342,7 @@ SubmitNewKey:
     status := GetKeyStatus(GuiNewKey, ActiveKeyExpires)
 
     if (status != "valid") {
-        MsgBox, 48, Invalid Key, Key invalid or expired.
-        SendWebhook("Invalid key renewal", username, GuiNewKey, "DENIED")
+        MsgBox, 48, Invalid Key, Still invalid or expired.
         Return
     }
 
@@ -399,29 +352,22 @@ SubmitNewKey:
         Return
 
     IniWrite, %licenseKey%, %ConfigFile%, User, LicenseKey
-    SendWebhook("Key renewed", username, licenseKey, "RENEWED")
 
     Gui, Destroy
     Gosub, AfterLogin
 Return
 
 ; ==========================================================
-; AFTER LOGIN → RUN MAIN SCRIPT
+; AFTER LOGIN
 ; ==========================================================
 AfterLogin:
     SendWebhook("Script launched", username, licenseKey, "ON")
 
-    tempFile := A_Temp "\Bo7_remote.ahk"
-    urlMain  := MainScriptURL . "?cache=" . A_TickCount
-    UrlDownloadToFile, %urlMain%, %tempFile%
+    temp := A_Temp "\Bo7_remote.ahk"
+    urlMain := MainScriptURL . "?cache=" . A_TickCount
 
-    if (ErrorLevel) {
-        MsgBox, 16, Error, Failed to download main script.
-        SendWebhook("Download failure", username, licenseKey, "ERROR")
-        Return
-    }
-
-    Run, %tempFile%
+    UrlDownloadToFile, %urlMain%, %temp%
+    Run, %temp%
 Return
 
 ; ==========================================================
