@@ -1,5 +1,13 @@
 ; ==========================================================
-; MeR Bo7 Loader — Full Final Version (FIXED)
+; MeR Bo7 Loader — Final Fixed Version v2
+; Includes:
+;   - Full GUI system
+;   - Remote script loading
+;   - GitHub key database
+;   - HWID lock
+;   - Expiration check
+;   - JSON embeds (AHK v1 safe)
+;   - Dashboard PATCH editing
 ; ==========================================================
 
 #NoEnv
@@ -11,12 +19,12 @@ SetBatchLines, -1
 ; ---------------- SETTINGS ----------------
 WebhookURL := "https://discord.com/api/webhooks/1439780147606847651/TwUrdBrJJ68SAaqvRfxv8nn0q86wK77_HVD52mr42JyM7MisBottKawyMnq-MM5Nz2us"
 MainScriptURL := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Bo7"
-KeysURL := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Keys%20Bo7"
+KeysURL      := "https://raw.githubusercontent.com/M4eR1/MeR-s-mods/refs/heads/mods/Keys%20Bo7"
 
-ConfigDir   := A_AppData "\MeR_Bo7"
-ConfigFile  := ConfigDir "\config.ini"
-KeyLockFile := ConfigDir "\keys_lock.ini"
-DashboardFile := ConfigDir "\dashboard_id.txt"
+ConfigDir      := A_AppData "\MeR_Bo7"
+ConfigFile     := ConfigDir "\config.ini"
+KeyLockFile    := ConfigDir "\keys_lock.ini"
+DashboardFile  := ConfigDir "\dashboard_id.txt"
 
 global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 
@@ -35,25 +43,34 @@ LoadRemoteKeys() {
     KeyDB := []
 
     temp := A_Temp "\Bo7_keys_remote.txt"
-    UrlDownloadToFile, %KeysURL% "?cache=" A_TickCount, %temp%
+    url := KeysURL . "?cache=" . A_TickCount
+
+    UrlDownloadToFile, %url%, %temp%
 
     FileRead, contents, %temp%
-    Loop, Parse, contents, `n, `r {
+    if (ErrorLevel)
+        return false
+
+    Loop, Parse, contents, `n, `r
+    {
         line := Trim(A_LoopField)
-        if (line = "" || SubStr(line,1,1) = ";")
-            continue
+        if (line = "" || SubStr(line,1,1)=";")
+            Continue
+
         StringSplit, part, line, |
         KeyDB.Push({ key: Trim(part1), expires: Trim(part2) })
     }
+    return true
 }
 
 GetKeyStatus(thisKey, ByRef expOut := "") {
     global KeyDB
-    today := SubStr(A_Now,1,8)
+    expOut := ""
+    today := SubStr(A_Now, 1, 8)
 
-    for i, k in KeyDB {
-        if (k.key = thisKey) {
-            expOut := k.expires
+    for i, obj in KeyDB {
+        if (obj.key = thisKey) {
+            expOut := obj.expires
             if (expOut = "" || expOut = "0" || today <= expOut)
                 return "valid"
             return "expired"
@@ -69,8 +86,8 @@ CheckKeyOwnership(key, username) {
     IniRead, savedHWID, %KeyLockFile%, %key%, UsedByHWID,
     IniRead, savedUser, %KeyLockFile%, %key%, UsedByUser,
 
-    if (savedHWID = "" && savedUser = "") {
-        IniWrite, %hwid%,    %KeyLockFile%, %key%, UsedByHWID
+    if (savedHWID="" && savedUser="") {
+        IniWrite, %hwid%,     %KeyLockFile%, %key%, UsedByHWID
         IniWrite, %username%, %KeyLockFile%, %key%, UsedByUser
         return "ok"
     }
@@ -78,24 +95,23 @@ CheckKeyOwnership(key, username) {
     if (savedHWID = hwid)
         return "ok"
 
-    SendWebhook("Key used on another device", username, key, "WARNING")
-    MsgBox, 48, Key In Use, This key is already used on another PC.
+    SendWebhook("Key already used on another device", username, key, "WARNING")
+    MsgBox, 48, Key In Use, This key is already linked to another PC.`nContact MeR.
     return "denied"
 }
 
 GetActiveKeysSummary() {
     global KeyDB
-    out := ""
-    for i, k in KeyDB {
-        exp := (k.expires = "" || k.expires = "0") ? "lifetime" : k.expires
-        out .= k.key " (exp: " exp ")\n"
+    list := ""
+    for i, obj in KeyDB {
+        exp := (obj.expires = "" || obj.expires = "0") ? "lifetime" : obj.expires
+        list .= obj.key " (exp: " exp ")\n"
     }
-    return out
+    return list
 }
 
-
 ; ==========================================================
-; WEBHOOK (FIXED VERSION — PLACEHOLDERS)
+; WEBHOOK (JSON placeholders — AHK v1 SAFE)
 ; ==========================================================
 
 SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid := "") {
@@ -107,59 +123,59 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
     hwid := GetHWID()
     keys := GetActiveKeysSummary()
     StringReplace, keysEsc, keys, `n, \n, All
+
     FormatTime, ts,, yyyy-MM-dd HH:mm:ss
 
-    ; ----- JSON TEMPLATE -----
     embed =
     (
 {
-  "embeds": [
+  "embeds":[
     {
-      "title": "🟧🔥 M E R — B O 7  L O A D E R 🔥🟧",
-      "color": 16753920,
-      "fields": [
-        { "name": "👤 USER",   "value": "__USER__",   "inline": true },
-        { "name": "🔑 KEY",    "value": "__KEY__",    "inline": true },
-        { "name": "💻 HWID",   "value": "__HWID__",   "inline": false },
-        { "name": "📊 STATUS", "value": "__STATUS__", "inline": true },
-        { "name": "🧩 EVENT",  "value": "__EVENT__",  "inline": true },
-        { "name": "🟠 ACTIVE KEYS", "value": "__KEYS__", "inline": false }
+      "title":"🟧🔥 M E R — B O 7  L O A D E R 🔥🟧",
+      "color":16753920,
+      "fields":[
+        { "name":"👤 USER",   "value":"__USER__",   "inline":true },
+        { "name":"🔑 KEY",    "value":"__KEY__",    "inline":true },
+        { "name":"💻 HWID",   "value":"__HWID__",   "inline":false },
+        { "name":"📊 STATUS", "value":"__STATUS__", "inline":true },
+        { "name":"🧩 EVENT",  "value":"__EVENT__",  "inline":true },
+        { "name":"🟠 ACTIVE KEYS", "value":"__KEYS__", "inline":false }
       ],
-      "footer": { "text": "Updated: __TS__ UTC" },
-      "timestamp": "__TS__Z"
+      "footer":{ "text":"Updated: __TS__ UTC" },
+      "timestamp":"__TS__Z"
     }
   ]
 }
     )
 
-    ; ----- Replace placeholders -----
-    replUser := "**" user "**"
-    replStatus := "**" status "**"
-    replEvent := "**" event "**"
+    ; -- Replace placeholders --
+    StringReplace, embed, embed, __USER__,   % "**" user "**",   All
+    StringReplace, embed, embed, __KEY__,    % key,              All
+    StringReplace, embed, embed, __HWID__,   % hwid,             All
+    StringReplace, embed, embed, __STATUS__, % ("**" status "**"), All
+    StringReplace, embed, embed, __EVENT__,  % ("**" event "**"), All
+    StringReplace, embed, embed, __KEYS__,   % keysEsc,          All
+    StringReplace, embed, embed, __TS__,     % ts,               All
 
-    StringReplace, embed, embed, __USER__,   %replUser%,   All
-    StringReplace, embed, embed, __KEY__,    %key%,        All
-    StringReplace, embed, embed, __HWID__,   %hwid%,       All
-    StringReplace, embed, embed, __STATUS__, %replStatus%, All
-    StringReplace, embed, embed, __EVENT__,  %replEvent%,  All
-    StringReplace, embed, embed, __KEYS__,   %keysEsc%,    All
-    StringReplace, embed, embed, __TS__,     %ts%,         All
-
-    ; ----- PATCH or POST -----
+    ; Try PATCH existing dashboard
     if FileExist(DashboardFile) {
         FileRead, msgid, %DashboardFile%
         msgid := Trim(msgid)
+
         if (msgid != "") {
             url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN "/messages/" msgid
             wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+
             wh.Open("PATCH", url, false)
             wh.SetRequestHeader("Content-Type","application/json")
             wh.Send(embed)
+
             if (wh.Status = 200)
                 return
         }
     }
 
+    ; POST new message
     url := "https://discord.com/api/webhooks/" WH_ID "/" WH_TOKEN
     wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     wh.Open("POST", url, false)
@@ -168,12 +184,12 @@ SendWebhook(event, user, key, status := "", owner := "", oldhwid := "", newhwid 
 
     resp := wh.ResponseText
     RegExMatch(resp, """id"":""([^""]+)""", m)
+
     if (m1 != "") {
         FileDelete, %DashboardFile%
         FileAppend, %m1%, %DashboardFile%
     }
 }
-
 
 OnScriptExit(reason, code) {
     global username, licenseKey
@@ -182,7 +198,7 @@ OnScriptExit(reason, code) {
 
 
 ; ==========================================================
-; STARTUP
+; STARTUP FLOW
 ; ==========================================================
 
 if !FileExist(ConfigDir)
@@ -200,13 +216,14 @@ if (Registered != 1 || SavedUser = "") {
 } else {
     username := SavedUser
     licenseKey := SavedKey
+
     status := GetKeyStatus(licenseKey, ActiveKeyExpires)
 
     if (status = "valid") {
         if (CheckKeyOwnership(licenseKey, username) = "ok")
             Gosub, AfterLogin
     } else {
-        NewKeyReason := (status = "expired") ? "expired" : "invalid"
+        NewKeyReason := (status="expired") ? "expired" : "invalid"
         Gosub, ShowNewKeyGui
     }
 }
@@ -214,7 +231,7 @@ Return
 
 
 ; ==========================================================
-; GUIS
+; GUI SCREENS
 ; ==========================================================
 
 ShowRegisterGui:
@@ -233,11 +250,13 @@ ShowRegisterGui:
 
     Gui, Add, Button, x10 y210 w120 h30 gRegisterUser, Register
     Gui, Add, Button, x150 y210 w120 h30 gExitAppBtn, Exit
+
     Gui, Show
 Return
 
 RegisterUser:
     Gui, Submit
+
     if (GuiUsername="" || GuiKey="") {
         MsgBox, 48, Missing, Fill all fields.
         Return
@@ -245,16 +264,17 @@ RegisterUser:
 
     LoadRemoteKeys()
     status := GetKeyStatus(GuiKey, ActiveKeyExpires)
-    if (status != "valid") {
+
+    if (status!="valid") {
         MsgBox, 48, Invalid, Invalid or expired key.
-        SendWebhook("Invalid registration key", GuiUsername, GuiKey, "DENIED")
+        SendWebhook("Invalid key on registration", GuiUsername, GuiKey, "DENIED")
         Return
     }
 
     username := GuiUsername
     licenseKey := GuiKey
 
-    if (CheckKeyOwnership(licenseKey, username) != "ok")
+    if (CheckKeyOwnership(licenseKey, username)!="ok")
         Return
 
     IniWrite, 1,            %ConfigFile%, User, Registered
@@ -269,40 +289,45 @@ Return
 
 
 ShowNewKeyGui:
-    Gui, New, +AlwaysOnTop, Key Required
+    Gui, New, +AlwaysOnTop, Key Needed
     Gui, Color, 111111
     Gui, Font, s10 cFFA500
 
-    t := (NewKeyReason="expired") ? "Your key expired." : "Invalid key."
+    t := (NewKeyReason="expired") ? "Your key has expired." : "Your key is invalid."
     Gui, Add, Text, x0 y20 w280 Center cFFA500, %t%
     Gui, Add, Text, x0 y50 w280 Center cFFFFFF, Enter new key
 
     Gui, Add, Edit, x10 y90 w260 vGuiNewKey Password
     Gui, Add, Button, x10 y130 w120 h30 gSubmitNewKey, Activate
     Gui, Add, Button, x150 y130 w120 h30 gExitAppBtn, Exit
+
     Gui, Show
 Return
 
 SubmitNewKey:
     Gui, Submit
-    if (GuiNewKey = "") {
+
+    if (GuiNewKey="") {
         MsgBox, 48, Missing, Enter a key.
         Return
     }
 
     LoadRemoteKeys()
     status := GetKeyStatus(GuiNewKey, ActiveKeyExpires)
-    if (status != "valid") {
+
+    if (status!="valid") {
         MsgBox, 48, Invalid, Invalid or expired key.
-        SendWebhook("Invalid renewal key", username, GuiNewKey, "DENIED")
+        SendWebhook("Invalid key renewal", username, GuiNewKey, "DENIED")
         Return
     }
 
     licenseKey := GuiNewKey
-    if (CheckKeyOwnership(licenseKey, username) != "ok")
+
+    if (CheckKeyOwnership(licenseKey, username)!="ok")
         Return
 
     IniWrite, %licenseKey%, %ConfigFile%, User, LicenseKey
+
     SendWebhook("Key renewed", username, licenseKey, "RENEWED")
 
     Gui, Destroy
@@ -311,7 +336,7 @@ Return
 
 
 ; ==========================================================
-; AFTER LOGIN — DOWNLOAD MAIN SCRIPT
+; AFTER LOGIN → RUN MAIN SCRIPT
 ; ==========================================================
 
 AfterLogin:
@@ -321,7 +346,7 @@ AfterLogin:
     UrlDownloadToFile, %MainScriptURL% "?cache=" A_TickCount, %tempFile%
 
     if (ErrorLevel) {
-        MsgBox, 16, Error, Failed to download script.
+        MsgBox, 16, Error, Failed to download main script.
         SendWebhook("Download failed", username, licenseKey, "ERROR")
         Return
     }
