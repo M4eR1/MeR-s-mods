@@ -16,6 +16,16 @@ SetBatchLines, -1
 PID := DllCall("GetCurrentProcessId")
 Process, Priority, %PID%, High
 
+; ---------------- INTEGRATION WITH LOADER (WEBHOOK + USER) ----------------
+
+WebhookURL := "https://discord.com/api/webhooks/1439780147606847651/TwUrdBrJJ68SAaqvRfxv8nn0q86wK77_HVD52mr42JyM7MisBottKawyMnq-MM5Nz2us"
+
+ConfigDir  := A_AppData "\MeR_Bo7"
+ConfigFile := ConfigDir "\config.ini"
+
+IniRead, username,   %ConfigFile%, User, Username, Unknown
+IniRead, licenseKey, %ConfigFile%, User, LicenseKey, Unknown
+
 ; ---------------- GUI -----------------
 
 Gui, +ToolWindow -Caption +E0x08000000 +LastFound +AlwaysOnTop
@@ -59,6 +69,9 @@ Gui, Add, Button, x10 y+20 w60 h28 gClose, Close
 Gui, Show, AutoSize, Bo7 Mod Menu — By MeR
 GuiVisible := true
 AnimateGuiIn()
+
+; notify that main script started
+SendStatusToWebhook("ON", "None")
 
 ; ---------------- VARIABLES -----------------
 
@@ -212,18 +225,35 @@ Return
 
 RifleToggle:
     GuiControlGet, RifleState,, RifleCheckbox
-    if (RifleState)
+    if (RifleState) {
+        ; turn off sniper if rifle is enabled
         GuiControl,, SniperCheckbox, 0
+        SendStatusToWebhook("ACTIVE", "Rifle")
+    } else {
+        ; rifle turned off, check if sniper is also off
+        GuiControlGet, SniperState,, SniperCheckbox
+        if (!SniperState)
+            SendStatusToWebhook("OFF", "None")
+    }
 Return
 
 SniperToggle:
     GuiControlGet, SniperState,, SniperCheckbox
-    if (SniperState)
+    if (SniperState) {
+        ; turn off rifle if sniper is enabled
         GuiControl,, RifleCheckbox, 0
+        SendStatusToWebhook("ACTIVE", "Sniper")
+    } else {
+        ; sniper turned off, check if rifle is also off
+        GuiControlGet, RifleState,, RifleCheckbox
+        if (!RifleState)
+            SendStatusToWebhook("OFF", "None")
+    }
 Return
 
 Close:
 GuiClose:
+    SendStatusToWebhook("OFF", "None")
     ExitApp
 Return
 
@@ -261,4 +291,25 @@ AnimateGuiOut() {
         WinSet, Transparent, %alpha%
         Sleep 15
     }
+}
+
+; ------------------- WEBHOOK STATUS SENDER -------------------
+
+SendStatusToWebhook(status, mode) {
+    global WebhookURL, username, licenseKey
+
+    ; Build simple JSON: {"content":"..."}
+    json =
+    (
+{"content":"__TEXT__"}
+    )
+
+    text := "Bo7 Main Script | User: " username ", Key: " licenseKey ", Status: " status ", Mode: " mode
+
+    StringReplace, json, json, __TEXT__, %text%, All
+
+    wh := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+    wh.Open("POST", WebhookURL, false)
+    wh.SetRequestHeader("Content-Type","application/json")
+    wh.Send(json)
 }
