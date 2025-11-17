@@ -18,7 +18,7 @@ Process, Priority, %PID%, High
 
 ; ---------------- INTEGRATION WITH LOADER (WEBHOOK + USER) ----------------
 
-WebhookURL := "https://discord.com/api/webhooks/1439780147606847651/TwUrdBrJJ68SAaqvRfxv8nn0q86wK77_HVD52mr42JyM7MisBottKawyMnq-MM5Nz2us"
+WebhookURL := "https://discord.com/api/webhooks/1439806284495982633/bA-BWNCRgt8snsjgCe1QK7avj1SxHWxio692MZLa0YrRdXVD8gItydb_3-EdIFivsnVB"
 
 ConfigDir  := A_AppData "\MeR_Bo7"
 ConfigFile := ConfigDir "\config.ini"
