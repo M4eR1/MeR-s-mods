@@ -27,10 +27,13 @@ global username, licenseKey, KeyDB, ActiveKeyExpires, NewKeyReason
 ; ==========================================================
 
 GetHWID() {
-    RunWait, %ComSpec% /c wmic csproduct get uuid > "%A_Temp%\uuid.txt",, Hide
-    FileRead, uuid, %A_Temp%\uuid.txt
-    return Trim(StrReplace(uuid, "UUID"))
+    ; Stable Windows Machine SID (works on Win10/Win11)
+    RunWait, %ComSpec% /c wmic useraccount where name="%USERNAME%" get sid > "%A_Temp%\sid.txt",, Hide
+    FileRead, sid, %A_Temp%\sid.txt
+    sid := Trim(StrReplace(sid, "SID"))
+    return sid
 }
+
 
 LoadRemoteKeys() {
     global KeysURL, KeyDB
